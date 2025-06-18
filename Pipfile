@@ -1,0 +1,33 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+ShopifyAPI = {file = "git+https://github.com/Shopify/shopify_python_api.git"}
+shopify_uploader = {file="git+https://github.com/ellie-cee/shopify-image-uploader.git"}
+mysqlclient = "*"
+peewee = ">=3.17.9"
+tortoise-orm="*"
+whitenoise="*"
+markdown="*"
+python-slugify=">=8.0.0."
+requests="*"
+jmespath="*"
+dateparser="*"
+mysql-connector-python="*"
+us="*"
+random-password-generator="*"
+chardet="*"
+charset_normalizer="*"
+toml="*"
+dict-recursive-update="*"
+phonenumbers="*"
+pycountry="*"
+Unidecode="*"
+django="*"
+beautifulsoup4="*"
+
+
