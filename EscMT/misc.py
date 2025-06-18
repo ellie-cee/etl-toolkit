@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 import sys
 from jmespath import search as jpath
 import shopify
@@ -227,15 +228,37 @@ def stripShopify(record,stripExternal=False,translate={},extra=[]):
                     del ret["phone"]
             
         return ret
+def loadProfiles():
+    if pathlib.Path(".shopify-profiles.json").exists():
+        return json.load(open(".shopify-profiles.json"))
+    else:
+        return None
     
-def shopifyInit():
+def shopifyInit(useProfile=None):
+    connectionDetails = None
+    profiles = loadProfiles()
+    if profiles is not None:
+        profile = "default"
+        if useProfile is not None:
+            profile = useProfile
+        else:
+            if os.environ.get("PROFILE") is not None:
+                profile = os.environ.get("PROFILE")        
+        print(f"Using Profile {profile}")
+        if profiles.get(profile) is None:
+            connectionDetails = profiles.get("profile")
+    else:
+        connectionDetails = {}
+        for key,value in os.environ.items():
+            if key.startswith("SHOPIFY"):
+                connectionDetails(key) = value
     
-    if os.environ.get("SHOPIFY_TOKEN") is not None:
+    if connectionDetails is not None and len(list(connectionDetails.keys()))>0:
         shopify.ShopifyResource.activate_session(
             shopify.Session(
-                f'{os.environ.get("SHOPIFY_DOMAIN")}/admin',
-                os.environ.get('SHOPIFY_API_VERSION'),
-                os.environ.get('SHOPIFY_TOKEN')
+                f'{connectionDetails.get("SHOPIFY_DOMAIN")}/admin',
+                connectionDetails.get('SHOPIFY_API_VERSION'),
+                connectionDetails.get('SHOPIFY_TOKEN')
             )
         )
 
