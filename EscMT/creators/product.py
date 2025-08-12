@@ -1,8 +1,7 @@
-"""import json
+import json
 from ..base.client import *
 from ..graphQL import Order,Variants,Products,MetaField
 from ..misc import *
-from shopify_uploader import ShopifyUploader
 import urllib.parse
 
 class ProductCreator(ProductRecordAwareClient):
@@ -181,5 +180,3 @@ class ProductCreator(ProductRecordAwareClient):
                 ret.dump()
     def defaultInventoryPolicy(self):
         return "DENY"
-            
-                """

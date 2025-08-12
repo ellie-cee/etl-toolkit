@@ -230,7 +230,7 @@ def stripShopify(record,stripExternal=False,translate={},extra=[]):
         return ret
 def loadProfiles():
     if pathlib.Path(".shopify-profiles.json").exists():
-        return json.load(open(".shopify-profiles.json"))
+        return SearchableDict(json.load(open(".shopify-profiles.json")))
     else:
         return None
     
@@ -251,7 +251,7 @@ def shopifyInit(useProfile=None):
         connectionDetails = {}
         for key,value in os.environ.items():
             if key.startswith("SHOPIFY"):
-                connectionDetails(key) = value
+                connectionDetails[key] = value
     
     if connectionDetails is not None and len(list(connectionDetails.keys()))>0:
         shopify.ShopifyResource.activate_session(

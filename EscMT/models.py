@@ -96,10 +96,10 @@ class CustomBaseModel(Model):
 class Record(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
     externalId = models.CharField(max_length=64,db_index=True)
-    
     recordType = models.CharField(max_length=64,db_index=True)
-    shopifyId = models.CharField(max_length=255)
-    
+    shopifyId = models.CharField(max_length=255,db_index=True)
+    recordAlternativeId = models.CharField(max_length=255,db_index=True)
+    recordClassification= models.CharField(max_length=255)
     created = models.DateTimeField(default=datetime.datetime.now)
     updated = models.DateTimeField(default=datetime.datetime.now)
     data = models.JSONField(null=True,default="{}")
@@ -122,7 +122,10 @@ class Record(CustomBaseModel):
             models.Index(fields=['recordType','externalId']),
             models.Index(fields=["shopifyId","tranch"]),
             models.Index(fields=["tranch","segment"]),
-            models.Index(fields=["tranch","segment","shopifyId"])
+            models.Index(fields=["tranch","segment","shopifyId"]),
+            models.Index(fields=["recordType","recordClassification","shopifyId"]),
+            models.Index(fields=["recordType","recordClassification","recordAlternativeId"]),
+            models.Index(fields=["recordType","recordClassification"]),
         ]
         get_latest_by = 'externalId'
         
@@ -193,7 +196,13 @@ class CreatorInstance(CustomBaseModel):
         indexes = [
             models.Index(fields=["recordClass","tranch","segment"]),
         ]
-        
+def createModels():
+    for table in [CreatorInstance,Record,FieldMapping,MetafieldMapping,ProductInfo,CustomerLookup,BadOrders]:
+        try:
+            db.create_table(table)
+        except Exception as e:
+            traceback.print_exc()
+                   
 if __name__=="__main__":
     
     print("hey now")

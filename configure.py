@@ -6,12 +6,14 @@ import json
 from urllib.parse import urlparse
 from password_generator import PasswordGenerator
 import subprocess
-import heroku3
 import toml
 import json
 import pathlib
 from slugify import slugify
+from EscMT.models import *
+from django.conf import settings
 
+    
 def getValue(key,default=None,label=None,mustBe=[]):
     value = None
     while value is None:
@@ -66,8 +68,11 @@ json.dump(
     open(".shopify-profiles.json","w"),
     indent=1
 )
-        
-for line in open(".env").readlines():
+readFilename = ".env"
+if not pathlib.Path(readFilename).exists():
+    readFilename = "env-basic"
+    
+for line in open(readFilename).readlines():
     if "=" not in line:
         continue
     if "SHOPIFY" in line:
@@ -86,8 +91,27 @@ for key,value in profiles.get("default").items():
 print("Writing .env")
 output = open(".env","w")
 for key in config.keys():
+    os.environ[key] = config[key]
     print(f"{key}={config[key]}",file=output)
 output.close()
+
+sqlTmpFile = "/tmp/create-esc-etl.sql"
+open(
+    sqlTmpFile,
+    "w"
+).write(
+    f""" 
+    DROP DATABASE IF EXISTS `{config.get('DB_NAME')}`;
+    CREATE DATABASE `{config.get('DB_NAME')}`; 
+    DROP USER IF EXISTS `{config.get('DB_USER')}`@`localhost`;
+    create user `{config.get('DB_USER')}`@`localhost` IDENTIFIED BY '{config.get('DB_PASSWORD')}';
+    GRANT ALL PRIVILEGES on {config.get('DB_NAME')}.* to `{config.get('DB_USER')}`@`localhost`;
+    flush privileges;
+""")
+os.system(f"sudo mysql < {sqlTmpFile}")
+pathlib.Path(sqlTmpFile).unlink()
+createModels()
+
 
 
    
