@@ -70,7 +70,7 @@ json.dump(
 )
 readFilename = ".env"
 if not pathlib.Path(readFilename).exists():
-    readFilename = "env-basic"
+    readFilename = ".env-basic"
     
 for line in open(readFilename).readlines():
     if "=" not in line:
