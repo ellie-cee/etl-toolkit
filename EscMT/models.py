@@ -232,8 +232,8 @@ class CreatorInstance(CustomBaseModel):
 def createModels():
     for table in [
             CreatorInstance,Record,FieldMapping,
-            MetafieldMapping,ProductInfo,CustomerLookup,
-            BadOrders,ShopifyAssetMap
+            MetafieldMapping,ProductInfo,RecordLookup,
+            BadOrders
         ]:
         try:
             db.create_table(table)
@@ -243,7 +243,7 @@ def createModels():
 if __name__=="__main__":
     
     print("hey now")
-    for table in [CreatorInstance,Record,FieldMapping,MetafieldMapping,ProductInfo,CustomerLookup,BadOrders]:
+    for table in [CreatorInstance,Record,FieldMapping,MetafieldMapping,ProductInfo,RecordLookup,BadOrders]:
         try:
             db.create_table(table)
         except Exception as e:
