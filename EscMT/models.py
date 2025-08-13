@@ -12,7 +12,7 @@ import datetime
 import django
 from django.conf import settings
 from django.db import models,connections,close_old_connections
-
+from django.db.models import Max
 from django.db.models import Model
 
 """
@@ -49,7 +49,9 @@ class Database:
                 abstract = True
 
         self.Model = CustomBaseModel
-
+    def cursor(self):
+        
+        return connections["default"].cursor()
     def create_table(self, model):
         with connections['default'].schema_editor() as schema_editor:
             if model._meta.db_table not in connections['default'].introspection.table_names():
@@ -84,6 +86,7 @@ db = Database(
 def close_db(signal,frame):
     print("closing DB",file=sys.stderr)
     close_old_connections()
+    sys.exit()
     
 signal.signal(signal.SIGINT,close_db)   
 signal.signal(signal.SIGTERM,close_db)
@@ -98,8 +101,8 @@ class Record(CustomBaseModel):
     externalId = models.CharField(max_length=64,db_index=True)
     recordType = models.CharField(max_length=64,db_index=True)
     shopifyId = models.CharField(max_length=255,db_index=True)
-    recordAlternativeId = models.CharField(max_length=255,db_index=True)
-    recordClassification= models.CharField(max_length=255)
+    numericShopifyId = models.BigIntegerField(db_index=True,null=True)
+    sourceClass= models.CharField(max_length=255)
     created = models.DateTimeField(default=datetime.datetime.now)
     updated = models.DateTimeField(default=datetime.datetime.now)
     data = models.JSONField(null=True,default="{}")
@@ -115,6 +118,12 @@ class Record(CustomBaseModel):
             self.data = json.dumps(data)
         elif isinstance(data,SearchableDict):
             self.data = json.dumps(data.data)
+    def save(self, **kwargs):
+        if kwargs.get("shopifyId") is not None:
+            kwargs["numericShopifyId"] = int(kwargs.get("shopifyId").split("/")[-1])
+        elif self.shopifyId!="" and self.shopifyId is not None:
+            self.numericShopifyId = int(self.shopifyId.split("/")[-1])
+        super().save(**kwargs)
     
     class Meta(CustomBaseModel.Meta):
         db_table="record"
@@ -123,11 +132,12 @@ class Record(CustomBaseModel):
             models.Index(fields=["shopifyId","tranch"]),
             models.Index(fields=["tranch","segment"]),
             models.Index(fields=["tranch","segment","shopifyId"]),
-            models.Index(fields=["recordType","recordClassification","shopifyId"]),
-            models.Index(fields=["recordType","recordClassification","recordAlternativeId"]),
-            models.Index(fields=["recordType","recordClassification"]),
+            models.Index(fields=["recordType","sourceClass","shopifyId"]),
+            models.Index(fields=["recordType","sourceClass","externalId"]),
+            models.Index(fields=["recordType","sourceClass"]),
         ]
-        get_latest_by = 'externalId'
+        
+        
         
         
 class MetafieldMapping(CustomBaseModel):
@@ -166,10 +176,19 @@ class ProductInfo(CustomBaseModel):
         db_table = "productInfo"
         get_latest_by = 'id'
 
-class CustomerLookup(CustomBaseModel):
+class RecordLookup(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
-    email = models.CharField(max_length=255,db_index=True)
-    customerId = models.CharField(max_length=255)
+    recordKey = models.CharField(max_length=255,db_index=True)
+    sourceShopifyrId = models.CharField(max_length=255,db_index=True)
+    destShopifyrId = models.CharField(max_length=255,db_index=True)
+    numericCustomerId = models.BigIntegerField(null=True,db_index=True)
+    
+    def save(self, **kwargs):
+        if kwargs.get("customerId") is not None:
+            kwargs["numericCustomerId"] = int(kwargs.get("customerId").split("/")[-1])
+        if self.customerId is not None and self.customerId!="":
+            self.numericCustomerId = int(self.customerId.split("/")[-1])
+        super().save(**kwargs)
     
     class Meta(CustomBaseModel.Meta):
         db_table = "emailLookup"
@@ -197,7 +216,11 @@ class CreatorInstance(CustomBaseModel):
             models.Index(fields=["recordClass","tranch","segment"]),
         ]
 def createModels():
-    for table in [CreatorInstance,Record,FieldMapping,MetafieldMapping,ProductInfo,CustomerLookup,BadOrders]:
+    for table in [
+            CreatorInstance,Record,FieldMapping,
+            MetafieldMapping,ProductInfo,CustomerLookup,
+            BadOrders,ShopifyAssetMap
+        ]:
         try:
             db.create_table(table)
         except Exception as e:

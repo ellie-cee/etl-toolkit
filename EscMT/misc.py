@@ -25,7 +25,7 @@ class bp:
         self.bpc = 0
     def inc(self):
         self.bpc = self.bpc+1
-        print(f"bp: {self.bpc}")
+        
         
 
         
@@ -57,7 +57,7 @@ class SearchableDict:
             return ret
     def dump(self,printIt=True):
         if printIt:
-            print(json.dumps(self.data,indent=1))
+            print(json.dumps(self.data,indent=1),file=sys.stderr)
         else:
             return self.data
     def set(self,key,value):
@@ -97,7 +97,7 @@ class GqlReturn(SearchableDict):
             errorDetails = self.findErrors(self.data)
             setattr(self,"errorDetails",errorDetails)
             if dump:
-                print(json.dumps(errorDetails,indent=1))
+                print(json.dumps(errorDetails,indent=1),file=sys.stderr)
                
         return self.errorDetails
         
@@ -147,11 +147,11 @@ def partition(allrows,chunksize=4):
             return [allrows]
             
         chunks = int(len(allrows)/chunksize)+ 1 if total%chunksize>0 else int(len(allrows)/chunksize)
-        print(chunks,total,chunksize)
+        
         for i in range(chunks):
             slicer = slice
             ret.append(allrows[:chunksize])
-            print("#a")
+            
             allrows = allrows[chunksize:]
         return ret
 def is_phone(phone):
@@ -161,7 +161,7 @@ def format_phone(phone):
     try:
         return phonenumbers.format_number(phonenumbers.parse(phone,'US'),phonenumbers.PhoneNumberFormat.E164)
     except phonenumbers.phonenumberutil.NumberParseException:
-        print(f"well this number just wrecked everything: {phone}")
+        print(f"well this number just wrecked everything: {phone}",file=sys.stderr)
         return ""
 def country_code(country):
     ret = pycountry.countries.get(name=country)
@@ -234,25 +234,26 @@ def loadProfiles():
     else:
         return None
     
-def shopifyInit(useProfile=None):
+def shopifyInit(useProfile="default"):
+    
     connectionDetails = None
     profiles = loadProfiles()
+    
     if profiles is not None:
-        profile = "default"
+        profile = useProfile
         if useProfile is not None:
             profile = useProfile
         else:
             if os.environ.get("PROFILE") is not None:
                 profile = os.environ.get("PROFILE")        
-        print(f"Using Profile {profile}")
-        if profiles.get(profile) is None:
-            connectionDetails = profiles.get("profile")
+
+        if profiles.get(profile) is not None:
+            connectionDetails = profiles.get(profile)
     else:
         connectionDetails = {}
         for key,value in os.environ.items():
             if key.startswith("SHOPIFY"):
                 connectionDetails[key] = value
-    
     if connectionDetails is not None and len(list(connectionDetails.keys()))>0:
         shopify.ShopifyResource.activate_session(
             shopify.Session(
