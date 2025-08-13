@@ -99,6 +99,7 @@ class CustomBaseModel(Model):
 class Record(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
     externalId = models.CharField(max_length=64,db_index=True)
+    numericExternalId = models.BigIntegerField(db_index=True,null=True)
     recordType = models.CharField(max_length=64,db_index=True)
     shopifyId = models.CharField(max_length=255,db_index=True)
     numericShopifyId = models.BigIntegerField(db_index=True,null=True)
@@ -111,6 +112,13 @@ class Record(CustomBaseModel):
     tranch = models.CharField(max_length=4,default="1970",db_index=True)
     segment = models.IntegerField(default=0,db_index=True)
     errors = models.TextField(default="")
+    def searchable(self,field):
+        if hasattr(self,field):
+            try:
+                return SearchableDict(json.loads(getattr(self,field)))
+            except:
+                return None
+        return None
     def getData(self):
         return SearchableDict(json.loads(self.data))
     def setData(self,data):
@@ -119,10 +127,16 @@ class Record(CustomBaseModel):
         elif isinstance(data,SearchableDict):
             self.data = json.dumps(data.data)
     def save(self, **kwargs):
-        if kwargs.get("shopifyId") is not None:
-            kwargs["numericShopifyId"] = int(kwargs.get("shopifyId").split("/")[-1])
-        elif self.shopifyId!="" and self.shopifyId is not None:
+       
+        if self.shopifyId!="" and self.shopifyId is not None:
             self.numericShopifyId = int(self.shopifyId.split("/")[-1])
+        if self.externalId!="" and self.externalId is not None:
+            if "/shopify/" in self.externalId:
+                self.numericShopifyId = int(self.externalId.split("/")[-1])
+        if isinstance(self.data,SearchableDict):
+            self.data = self.data.data
+        if isinstance(self.consolidated,SearchableDict):
+            self.consolidated = self.consolidated.data
         super().save(**kwargs)
     
     class Meta(CustomBaseModel.Meta):
@@ -179,7 +193,7 @@ class ProductInfo(CustomBaseModel):
 class RecordLookup(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
     recordKey = models.CharField(max_length=255,db_index=True)
-    sourceShopifyrId = models.CharField(max_length=255,db_index=True)
+    sourceShopifyId = models.CharField(max_length=255,db_index=True)
     destShopifyrId = models.CharField(max_length=255,db_index=True)
     numericCustomerId = models.BigIntegerField(null=True,db_index=True)
     
@@ -191,7 +205,7 @@ class RecordLookup(CustomBaseModel):
         super().save(**kwargs)
     
     class Meta(CustomBaseModel.Meta):
-        db_table = "emailLookup"
+        db_table = "recordLookup"
         
 class BadOrders(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
