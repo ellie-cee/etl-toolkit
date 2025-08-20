@@ -76,7 +76,7 @@ class SearchableDict:
         if isinstance(val,dict):
             return SearchableDict(val)
         if val is None:
-            return SearchableDict({})
+            return None
         return val
     
     def append(self,key,value):
@@ -288,5 +288,11 @@ def database():
     )
     return db
 
+def stripDict(dictObject,ignore=[]):
+    ret = {}
+    for key,value in dictObject.items():
+        if key not in ignore:
+            ret[key] = value
+    return ret
 class JSONException(Exception):
     pass

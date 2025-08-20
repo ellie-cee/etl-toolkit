@@ -8,3 +8,4 @@ from .metaobject import *
 from .collections import *
 from .navigation import *
 from .store import *
+from .files import *

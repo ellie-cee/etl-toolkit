@@ -34,7 +34,7 @@ class ShopifyCustomerImporter(ShopifyImporter):
     
     def maxQuery(self):
         try:
-            latest = CustomerLookup.objects.latest("numericCustomerId")
+            latest = recordLokup.objects.latest("numericCustomerId")
             if latest.numericCustomerId is None:
                 return ""
             query = f"id:>{latest.numericCustomerId}"
@@ -417,16 +417,4 @@ class ShopifyProductImporter(ShopifyImporter):
             record.dump()   
         
 
-    def processRecord(self,product):
-        shopifyId = product.get("id")
-        if shopifyId is None:
-            return
-        record,created = Record.objects.get_or_create(
-            externalId=shopifyId
-        )
-        if created:
-            record.recordType="product"
-            record.data = product.data
-            record.sourceClass = self.sourceClass
-            
-        print(record.get("id")) 
+   

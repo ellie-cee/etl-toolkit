@@ -12,7 +12,11 @@ import pathlib
 from slugify import slugify
 from EscMT.models import *
 from django.conf import settings
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--skip-db",action="store_true")
+args = parser.parse_args()
     
 def getValue(key,default=None,label=None,mustBe=[]):
     value = None
@@ -94,6 +98,9 @@ for key in config.keys():
     os.environ[key] = config[key]
     print(f"{key}={config[key]}",file=output)
 output.close()
+
+if args.skip_db:
+    sys.exit()
 
 sqlTmpFile = "/tmp/create-esc-etl.sql"
 open(

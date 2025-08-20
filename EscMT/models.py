@@ -28,7 +28,6 @@ _database = MySQLDatabase(
 class Database:
     def __init__(self, engine='django.db.backends.sqlite3', name=None, user=None, password=None, host=None, port=None):
         self.Model = None
-
         
         databases = {
             'default': {
@@ -50,8 +49,8 @@ class Database:
 
         self.Model = CustomBaseModel
     def cursor(self):
-        
         return connections["default"].cursor()
+    
     def create_table(self, model):
         with connections['default'].schema_editor() as schema_editor:
             if model._meta.db_table not in connections['default'].introspection.table_names():
@@ -75,7 +74,7 @@ class Database:
                         # Add the new column to the table
                         schema_editor.add_field(model, field)
 
-db = Database(
+migrationDB = Database(
     engine="django.db.backends.mysql",
     name=os.environ.get("DB_NAME"),
     user=os.environ.get("DB_USER"),
@@ -99,10 +98,10 @@ class CustomBaseModel(Model):
 class Record(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
     externalId = models.CharField(max_length=64,db_index=True)
-    numericExternalId = models.BigIntegerField(db_index=True,null=True)
+    numericId = models.BigIntegerField()
     recordType = models.CharField(max_length=64,db_index=True)
     shopifyId = models.CharField(max_length=255,db_index=True)
-    numericShopifyId = models.BigIntegerField(db_index=True,null=True)
+    numericShopifyId = models.BigIntegerField()
     sourceClass= models.CharField(max_length=255)
     created = models.DateTimeField(default=datetime.datetime.now)
     updated = models.DateTimeField(default=datetime.datetime.now)
@@ -120,7 +119,7 @@ class Record(CustomBaseModel):
                 return None
         return None
     def getData(self):
-        return SearchableDict(json.loads(self.data))
+        return SearchableDict(self.data)
     def setData(self,data):
         if isinstance(data,dict):
             self.data = json.dumps(data)
@@ -128,11 +127,12 @@ class Record(CustomBaseModel):
             self.data = json.dumps(data.data)
     def save(self, **kwargs):
        
-        if self.shopifyId!="" and self.shopifyId is not None:
-            self.numericShopifyId = int(self.shopifyId.split("/")[-1])
         if self.externalId!="" and self.externalId is not None:
             if "/shopify/" in self.externalId:
-                self.numericShopifyId = int(self.externalId.split("/")[-1])
+                self.numericId = int(self.externalId.split("/")[-1])
+        if self.shopifyId!="" and self.shopifyId is not None:
+            if "/shopify/" in self.shopifyId:
+                self.numericShopifyId = int(self.shopifyId.split("/")[-1])
         if isinstance(self.data,SearchableDict):
             self.data = self.data.data
         if isinstance(self.consolidated,SearchableDict):
@@ -193,19 +193,35 @@ class ProductInfo(CustomBaseModel):
 class RecordLookup(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
     recordKey = models.CharField(max_length=255,db_index=True)
-    sourceShopifyId = models.CharField(max_length=255,db_index=True)
-    destShopifyrId = models.CharField(max_length=255,db_index=True)
-    numericCustomerId = models.BigIntegerField(null=True,db_index=True)
+    recordType = models.CharField(max_length=255,db_index=True)
+    externalId = models.CharField(max_length=255,db_index=True)
+    numericId = models.BigIntegerField()
+    parentId = models.CharField(max_length=255,db_index=True)
+    shopifyId = models.CharField(max_length=255,db_index=True)
+    numericShopifyId = models.BigIntegerField()
+    url = models.TextField()
+    alt = models.TextField()
     
     def save(self, **kwargs):
-        if kwargs.get("customerId") is not None:
-            kwargs["numericCustomerId"] = int(kwargs.get("customerId").split("/")[-1])
-        if self.customerId is not None and self.customerId!="":
-            self.numericCustomerId = int(self.customerId.split("/")[-1])
+       
+        if self.externalId!="" and self.externalId is not None:
+            if "/shopify/" in self.externalId:
+                self.numericId = int(self.externalId.split("/")[-1])
+        if self.shopifyId!="" and self.shopifyId is not None:
+            if "/shopify/" in self.shopifyId:
+                self.numericShopifyId = int(self.shopifyId.split("/")[-1])
         super().save(**kwargs)
     
     class Meta(CustomBaseModel.Meta):
         db_table = "recordLookup"
+        indexes = [
+            models.Index(fields=['recordType','recordKey']),
+            models.Index(fields=["recordType","recordKey","shopifyId"]),
+            models.Index(fields=["recordType","recordKey","externalId"]),
+            models.Index(fields=["recordKey","shopifyId"]),
+            models.Index(fields=["recordKey","externalId"]),
+        ]
+        
         
 class BadOrders(CustomBaseModel):
     id = models.BigAutoField(primary_key=True)
@@ -236,7 +252,7 @@ def createModels():
             BadOrders
         ]:
         try:
-            db.create_table(table)
+            migrationDB.create_table(table)
         except Exception as e:
             traceback.print_exc()
                    
@@ -245,6 +261,6 @@ if __name__=="__main__":
     print("hey now")
     for table in [CreatorInstance,Record,FieldMapping,MetafieldMapping,ProductInfo,RecordLookup,BadOrders]:
         try:
-            db.create_table(table)
+            migrationDB.create_table(table)
         except Exception as e:
             traceback.print_exc()

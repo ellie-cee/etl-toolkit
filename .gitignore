@@ -175,3 +175,4 @@ cython_debug/
 .shopify-profiles.json
 project_*
 Pipfile.lock
+EscMT/shopify/project.py
