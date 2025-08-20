@@ -10,7 +10,8 @@ class ShopifyOperation:
     def __init__(self,profile="default",sourceClass="source"):
         self.sourceClass = sourceClass
         self.profile = profile
-        shopifyInit(useProfile=profile)
+        if shopify.ShopifyResource.site is None:
+            shopifyInit(useProfile=profile)
         self.gql = self.setGql()
         self.groupsProcessed = 0
     def processRecord(self,record):
@@ -21,7 +22,7 @@ class ShopifyOperation:
     @staticmethod
     def lookupItemId(itemGid):
         try:
-            record = Record.objects.get(externalId=itemGid)
+            record = RecordLookup.objects.get(externalId=itemGid)
             if record.shopifyId!="":
                 return record.shopifyId
             return None
@@ -121,7 +122,7 @@ class ShopifyCreator(ShopifyOperation):
         return "generic"
     def run(self):
         
-        for record in Record.objects.filter(recordType=self.recordType(),shopifyId="").all()[:50]:
+        for record in Record.objects.filter(recordType=self.recordType(),shopifyId="").all():
             
             self.processRecord(record)
             

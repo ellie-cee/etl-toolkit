@@ -6,6 +6,7 @@ import logging
 import urllib
 import time
 import signal
+import http.client
 logger = logging.getLogger(__name__)
 
 def sigInt(signal,frame):
@@ -27,6 +28,10 @@ def catchNetWorkError(fn):
                 print(f"{e.reason}: retrying")
                 time.sleep(3)
             except urllib.error.URLError as e:
+                retryCount = retryCount + 1
+                print(f"{e.reason}: retrying")
+                time.sleep(3)
+            except http.client.RemoteDisconnected:
                 retryCount = retryCount + 1
                 print(f"{e.reason}: retrying")
                 time.sleep(3)

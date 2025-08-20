@@ -18,7 +18,6 @@ class ShopifyCustomerImporter(ShopifyImporter):
                     nodes {
                         id
                         addresses {
-                            
                             address1
                             address2
                             city

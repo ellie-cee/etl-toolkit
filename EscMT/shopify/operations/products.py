@@ -156,6 +156,14 @@ class ShopifyProductImporter(ShopifyImporter):
                             
                             inventoryPolicy
                             inventoryQuantity
+                            metafields(first:20) {
+                                nodes {
+                                    namespace
+                                    key
+                                    type
+                                    value    
+                                }
+                            }
                             position
                             price
                             selectedOptions {
@@ -190,31 +198,25 @@ class ShopifyProductImporter(ShopifyImporter):
                             type
                         }
                     }
-                    variants(first:100) {
-                        nodes {
-                            metafields(first:20) {
-                                nodes {
-                                    namespace
-                                    key
-                                    type
-                                    value    
-                                }
-                            }
-                        }
-                    }
+                    #variantMetafields:variants(first:100) {
+                    #    nodes {
+                    #        id
+                    #    }
+                    #}
                 }
             }
             """,
             {"productId":product.get("id")}
         )
+        
         product.set("metafields.nodes",[x.data for x in record.nodes("data.product.metafields")])
+        #product.set("variantsMetafields.nodes",[x.data for x in record.nodes("data.product.variants")])
         product.set("variants.nodes",[x.data for x in record.nodes("data.product.variants")])
         recordVariants = record.nodes("data.product.variants")
         
         for index,variant in enumerate(product.nodes("variants")):
             variant.set("metafields.nodes",[x.data for x in recordVariants[index].nodes("metafields")])
-        if len(record.nodes("data.product.metafields.nodes"))>0:
-            record.dump()   
+        
         
     def handleMedia(self,product):
         pass
@@ -361,6 +363,7 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                     "sku":variant.get("sku"),
                     "tracked":True,
                 },
+                "inventoryQuantities":self.mapInventoryQuantities(variant),
                 "price":variant.get("price"),
                 "taxable":variant.get("taxable"),
             }
@@ -372,7 +375,20 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
             ret.append(variantInput)
         return ret
             
+    def mapInventoryQuantities(self,variant:SearchableDict):
         
+        
+        inventorQuantities = []
+        for levels in [SearchableDict(x) for x in variant.search("inventoryItem.inventoryLevels.nodes",[])]:
+            
+           
+            inventorQuantities.append(
+                {
+                    "availableQuantity":levels.search("quantities[0].quantity",0),
+                    "locationId":ShopifyOperation.lookupItemId(levels.search("location.id"))
+                }
+            )
+        return inventorQuantities
     def mapMetafields(self,metafields):
         return [
             {
@@ -432,10 +448,7 @@ class ShopifyProductCreator(ShopifyCreator):
             recordLookup.save()
             product.shopifyId = productId
             product.save()
-            print( {
-                    "productId":productId,
-                    "variants":consolidated.get("variantInput")
-                })
+            
             productVariants = GraphQL().run(
                 """
                 mutation profuctVariantsCreate($productId:ID!,$variants:[ProductVariantsBulkInput!]!) {
@@ -464,17 +477,24 @@ class ShopifyProductCreator(ShopifyCreator):
                 
             )
             
-            firstId = productVariants.get("data.productVariantsBulkCreate.productVariants[0].id")
+            firstId = productVariants.search("data.productVariantsBulkCreate.productVariants[0].id")
             if firstId is None:
                 productVariants.dump()
             else:
+                print("processing Variants")
                 for variant in productVariants.search("data.productVariantsBulkCreate.productVariants"):
-                    existingRecord = RecordLookup.objects.filter(
-                     recordKey=variant.get("sku")
-                    ).first()
-                    if existingRecord is not None:
-                        existingRecord.shopifyId = variant.get("id")
-                        existingRecord.save()
+                    try:
+                      
+                        existingRecord = RecordLookup.objects.filter(
+                        recordKey=variant.get("sku")
+                        ).first()
+                        if existingRecord is not None:
+                      
+                            existingRecord.shopifyId = variant.get("id")
+                            existingRecord.save()
+                    except:
+                        productVariants.dump()
+            print(f"Created record {productId}")
                         
 class ShopifyProductDeleter:
     def run(self,record:Record=None,all=False):

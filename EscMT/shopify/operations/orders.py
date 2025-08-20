@@ -61,6 +61,20 @@ class ShopifyOrderImporter(ShopifyImporter):
                         currencyCode
                         customer {
                             id
+                            firstName
+                            lastName
+                            email
+                            phone
+                            addresses {
+                                address1
+                                address2
+                                city
+                                zip
+                                country
+                                firstName
+                                lastName
+                                province
+                            }
                         }
                         discountApplications(first:10) {
                             nodes {
@@ -82,21 +96,9 @@ class ShopifyOrderImporter(ShopifyImporter):
                         discountCode
                         discountCodes
                         email
-                        fulfillments {
-                            status
-                            createdAt
-                            displayStatus
-                            fulfillmentLineItems(first:10) {
-                                nodes {
-                                    quantity
-                                    lineItem {
-                                        quantity
-                                    }
-                                }
-                            }
-                        }
+                        
                         id
-                        lineItems(first:20) {
+                        lineItems(first:100) {
                             nodes {
                                 customAttributes {
                                     key
@@ -115,6 +117,7 @@ class ShopifyOrderImporter(ShopifyImporter):
                                         }
                                     }
                                 }
+                                id
                                 image {
                                     altText
                                     url
@@ -207,6 +210,7 @@ class ShopifyOrderImporter(ShopifyImporter):
         except:
             print(f"no API overage items for {order.get("id")}")
             
+            
         self.createRecords(order.get("name"),order)
         print(f"order {order.get('id')}")
         ShopifyOrderConsolidator().run(order=order)
@@ -214,10 +218,11 @@ class ShopifyOrderImporter(ShopifyImporter):
                     
                     
     def loadApiOverageItems(self,orderId)->GqlReturn:
-        return self.gql.run(
+        ret = self.gql.run(
             """
             query getOrder($orderId:ID!) {
                 order(id:$orderId) {
+                    id
                     transactions(first:20) {                            
                         amountSet {
                             shopMoney {
@@ -264,7 +269,35 @@ class ShopifyOrderImporter(ShopifyImporter):
                             }
                         }
                         
-                    }                    
+                    } 
+                    fulfillments(first:20) {
+                        status
+                        createdAt
+                        displayStatus
+                        id
+                        fulfillmentLineItems(first:50) {
+                            nodes {
+                                id
+                                quantity
+                                lineItem {
+                                    id
+                                    quantity
+                                    sku
+                                    variant {
+                                        id
+                                    }
+                                }
+                            }
+                        }
+                        location {
+                            id
+                        }
+                        requiresShipping
+                        totalQuantity
+                        trackingInfo {
+                            number
+                        }
+                    }                                 
                 }
             }
             """,
@@ -272,6 +305,10 @@ class ShopifyOrderImporter(ShopifyImporter):
                 "orderId":orderId
             }
         )
+        if ret.search("data.order.id") is None:
+            ret.dump()
+            sys.exit()
+        return ret
         
 class ShopifyOrderConsolidator(ShopifyConsolidator):
     def run(self,order=None,orderId=None):
@@ -288,11 +325,6 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 "buyerAcceptsMarketing":False,
                 "currency":raw.get("currencyCode"),
                 "customAttributes":raw.get("custmoAttributes"),
-                "customer":{
-                    "toAssociate":{
-                        "id":raw.search("customer.id")
-                    }
-                },
                 "email":raw.get("email"),
                 "fulfillmentStatus":self.calculateFulfillment(raw),
                 "customAttributes":raw.get("customAttributes"),
@@ -302,11 +334,27 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 "processedAt":raw.get("processedAt"),
                 "shippingAddress":raw.get("shippingAddress"),
                 "shippingLines":raw.search("shippingLines.nodes"),
-                "tags":["ps_prder"]+raw.get("tags"),
+                "tags":["PET order"]+raw.get("tags"),
                 "taxesIncluded":raw.get("taxesIncluded"),
                 "taxLines":raw.get("taxLines"),
                 "transactions":raw.get("transactions"),    
             }
+        shopifyCustomerId = ShopifyOperation.lookupItemId(raw.search("customer.id"))
+        if shopifyCustomerId is not None:
+            consolidatedOrder["customer"] = {
+                "toAssociate":shopifyCustomerId
+            }
+        else:
+            customerInfo = raw.getAsSearchable("customer")
+            consolidatedOrder["customer"] = {
+                "toUpsert":{
+                    "addresses":customerInfo.get("addresses"),
+                    "firstName":customerInfo.get("firstName"),
+                    "lastName":customerInfo.get("lastName"),
+                    "email":customerInfo.get("email")
+                }
+            }
+            
         discountCodes = raw.get("discountCodes")
         discountCodeInput = None
         hasSpecificLineItemDiscounts = False
@@ -394,8 +442,7 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
     def processLineItems(self,lineItems:List[SearchableDict]):
         processedLineItems = []
         for lineItem in lineItems:
-            if len(lineItem.get("discountAllocations",[]))>0:
-                print("ORDER HAS DISCOUNTS")
+            
             processedLineItem = {
                 "quantity":lineItem.get("quantity"),
                 "properties":self.customAttributesToProperties(lineItem.get("customAttributes")),
@@ -638,21 +685,24 @@ class ShopifyOrderCreator(ShopifyCreator):
         
         
 class ShopifyOrderDeleter(ShopifyDeleter):
-    def run(self,record:Record=None,all=False):
+    def run(self,record,all=False):
+        if isinstance(record,SearchableDict):
+            self.delete(record.get("id"))
         if all:
             for record in Record.objects.filter(recordType="order").all():
                 if record.shopifyId!="":
-                    recordLookup = RecordLookup.objects.get(shopifyId=record.shopifyId)
+                    #recordLookup = RecordLookup.objects.get(shopifyId=record.shopifyId)
                     
                     self.delete(record.shopifyId)
-                    record.shopifyId = ""
-                    record.save()
-                    recordLookup.save()
+                    #record.shopifyId = ""
+                    #record.save()
+                    #recordLookup.save()
         else:
             self.delete(record.shopifyId)
             
             
     def delete(self,shopifyId):
+        print(shopifyId)
         ret =  GraphQL().run(
             """
             mutation OrderDelete($orderId: ID!) {

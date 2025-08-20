@@ -15,28 +15,33 @@ import signal
 from .misc import shopifyInit
 
 class BatchRecordIterator:
-    def __init__(self):
+    def __init__(self,db,type,tranch,segment=None):
         super().__init__()
-        self.query = None
-    def __iter__(self):
-        return self    
+        recordIterator = Record.objects.filter(recordType=type,shopifyId="",tranch=tranch)
+        if segment is not None:
+            recordIterator = recordIterator.filter(segment=segment)
+        self.recordIterator = recordIterator.iterator()
+        signal.signal(signal.SIGTERM,lambda signal,frame: self.db.close())
+
     def __next__(self):
-        raise StopIteration
+        ret = None
+        try:
+            ret = next(self.recordIterator.iterator())
+        except:
+            raise StopIteration
+        return ret
+        
+    
         
     
 class BatchOperation:
-    def __init__(self):
+    def __init__(self,**args):
         
         self.pid = os.getpid()
         
         self.instance = None
         self.scriptName = sys.argv[0]
-        parser = ArgumentParser()
-        parser.add_argument("--tranch")
-        parser.add_argument("--segments",type=int,default=100)
-        parser.add_argument("--segment",type=int)
-        parser.add_argument("--mode")
-        args = parser.parse_args()
+        self.args = args
         for key,value in vars(args).items():
             setattr(self,key,value)
         
@@ -136,14 +141,20 @@ class BatchOperation:
         # spawn mother processes
         for tranch in sorted(self.loadTranches()):
             print(self.scriptName)
+            operations = [
+                self.scriptName,
+                "--mode","segment"
+            ]
+            if self.args.segments is None:
+                self.args.segments = 50
+                
+            for k,v in self.args.items():
+                operations = operations + [f"--{k}",v]
+
             process = subprocess.Popen(
-                [
-                    self.scriptName,
-                    "--mode","segment",
-                    "--tranch",str(tranch),
-                    "--segments",str(self.arg("segments",50))
-                ]
+                operations
             )
+            
             # wait for at least one process to spawn
             while self.getProcessCount()<1:
                 time.sleep(1)
@@ -172,7 +183,7 @@ class BatchOperation:
         segments = [1]
         self.startUpdates()
         for record in recordIterator:
-            self.updateRecord(record.get("id"),currentSegment)
+            self.updateRecord(record.get("externalId"),currentSegment)
             processedRecords = processedRecords +1
             if processedRecords % segmentLength == 0:
                 if currentSegment+1<=self.arg("segments"):
