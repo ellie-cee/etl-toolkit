@@ -14,30 +14,39 @@ def sigInt(signal,frame):
 
 signal.signal(signal.SIGINT,sigInt)
 
+def log(message):
+    print(message,flush=True)
+
 def catchNetWorkError(fn):
     def wrapper(self, *args, **kwargs):
         retry = True
         retryCount = 0
         while retry and retryCount<10:
             try:
-                ret = fn(self,*args, **kwargs)
-                retry = False
-                return ret
+                ret:GqlReturn = fn(self,*args, **kwargs)
+                if ret.isDevThrottled():
+                    retry = True
+                    retryCount = retryCount + 1
+                    log(f"dev throttle: retrying {retryCount}/10")
+                    time.sleep(20)
+                else:
+                    retry = False
+                    return ret
             except urllib.error.HTTPError as e:
                 retryCount = retryCount + 1
-                print(f"{e.reason}: retrying")
+                log(f"retrying {retryCount}/10")
                 time.sleep(3)
             except urllib.error.URLError as e:
                 retryCount = retryCount + 1
-                print(f"{e.reason}: retrying")
+                log(f"retrying {retryCount}/10")
                 time.sleep(3)
             except http.client.RemoteDisconnected:
                 retryCount = retryCount + 1
-                print(f"{e.reason}: retrying")
+                log(f"retrying {retryCount}/10")
                 time.sleep(3)
             except Exception as e:
                 retryCount = retryCount + 1
-                print(f"{e.reason}: retrying")
+                log(f"retrying {retryCount}/10")
                 time.sleep(3)
     wrapper.__name__ = fn.__name__
     return wrapper
@@ -53,14 +62,21 @@ class GraphQL:
         self.debuggingIndent = level
         
     @catchNetWorkError    
-    def run(self,query,variables={},searchable=True):
+    def run(self,query,variables={},searchable=True,throttle=5000):
         ret = json.loads(shopify.GraphQL().execute(query,variables))
         retVal = GqlReturn(ret)
+        
+
+        if throttle is not None:
+            if retVal.throttleRemaining()<throttle:
+                log(f"throttling at {retVal.throttleRemaining()}")
+                time.sleep(2)
         
         return retVal
     def iterable(self,query,params,dataroot="data.products"):
         return GraphQlIterable(query,params,dataroot=dataroot)
         pass
+    
         
 class GraphQlIterable(GraphQL):
     def __init__(self, query,params,dataroot="data.products"):

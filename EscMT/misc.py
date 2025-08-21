@@ -89,7 +89,10 @@ class SearchableDict:
         elif type(self.data[key]) is not list:
             self.data[key] = [self.data[key],value]
         else:
-            self.data[key].append(value)            
+            self.data[key].append(value)
+    @staticmethod
+    def fromList(list):
+        return [SearchableDict(x) for x in list]
     
 class GqlReturn(SearchableDict):
     def errors(self,dump=False):
@@ -135,6 +138,13 @@ class GqlReturn(SearchableDict):
     def throttleRemaining(self):
         return self.search("extensions.cost.throttleStatus.currentlyAvailable",0)
     
+    def isDevThrottled(self):
+        errors = self.findErrors(self.data)
+        if errors is not None:
+            for error in errors:
+                if "Too many attempts" in error.get("message"):
+                    return True
+        return False
         
         
         

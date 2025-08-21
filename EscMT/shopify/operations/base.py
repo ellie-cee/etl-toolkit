@@ -6,8 +6,19 @@ from EscMT.models import *
 from EscMT.graphQL import *
 from django.db.models import Q
 
+class ProjectCreatorOptions:
+    def additionalProductMetafields(self,record:SearchableDict):
+        return []
+    def additionalVariantMetafields(self,record:SearchableDict):
+        return []
+    def additionalOrderMetafields(self,record:SearchableDict):
+        return []
+    def additionalCustomerMetafields(self,record:SearchableDict):
+        return []
+    
 class ShopifyOperation:
-    def __init__(self,profile="default",sourceClass="source"):
+    def __init__(self,profile="default",sourceClass="source",processor:ProjectCreatorOptions=ProjectCreatorOptions()):
+        self.processor = processor
         self.sourceClass = sourceClass
         self.profile = profile
         if shopify.ShopifyResource.site is None:
@@ -69,11 +80,11 @@ class ShopifyImporter(ShopifyOperation):
             sourceRecord,created = Record.objects.get_or_create(
                 externalId=record.get("id")
             )
-            if created:
-                sourceRecord.data = record
-                sourceRecord.sourceClass = self.sourceClass
-                sourceRecord.recordType = recordType
-                sourceRecord.save()
+            
+            sourceRecord.data = record
+            sourceRecord.sourceClass = self.sourceClass
+            sourceRecord.recordType = recordType
+            sourceRecord.save()
     
     def createUniqueRecord(self,recordKey,itemId,recordType,url="",parentId="",alt=""):
         mappingRecord,created = RecordLookup.objects.get_or_create(recordKey=recordKey)
@@ -106,7 +117,11 @@ class ShopifyImporter(ShopifyOperation):
             return ""
         
 class ShopifyConsolidator:
+    def __init__(self,processor:ProjectCreatorOptions=ProjectCreatorOptions()):
+        
+        self.processor = processor
     def run(self,record:GqlReturn=None,recordId:int=None) -> tuple[Record,SearchableDict]:
+        
         
         if record is not None:
             recordId = record.get("id")
@@ -121,8 +136,10 @@ class ShopifyCreator(ShopifyOperation):
     def recordType(self):
         return "generic"
     def run(self):
-        
-        for record in Record.objects.filter(recordType=self.recordType(),shopifyId="").all():
+        recordIterator = Record.objects.filter(recordType=self.recordType(),shopifyId="")
+        if self.sortOrder() == "desc":
+            recordIterator = recordIterator.order_by("-numericId")
+        for record in recordIterator.all():
             
             self.processRecord(record)
             
@@ -130,7 +147,8 @@ class ShopifyCreator(ShopifyOperation):
 
         recordLookup = RecordLookup.objects.get(externalId=record.externalId)
         return recordLookup
-    
+    def sortOrder(self):
+        return "asc"
 class ShopifyDeleter(ShopifyOperation):
     def recordType(self):
         return "generic"
@@ -142,3 +160,4 @@ class ShopifyDeleter(ShopifyOperation):
 
         recordLookup = RecordLookup.objects.get(externalId=record.externalId)
         return recordLookup
+    

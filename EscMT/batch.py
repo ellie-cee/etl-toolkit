@@ -13,24 +13,48 @@ import sys
 from slugify import slugify
 import signal
 from .misc import shopifyInit
+from django.db.models import Q
 
 class BatchRecordIterator:
-    def __init__(self,db,type,tranch,segment=None):
-        super().__init__()
-        recordIterator = Record.objects.filter(recordType=type,shopifyId="",tranch=tranch)
+    def __init__(self,type,tranch,segment=None):
+        self.type = type
+        self.tranch = tranch
+        self.segment = segment
+        recordIterator = Record.objects.filter(recordType=type).filter(shopifyId="").filter(tranch=tranch)
         if segment is not None:
             recordIterator = recordIterator.filter(segment=segment)
+        
         self.recordIterator = recordIterator.iterator()
-        signal.signal(signal.SIGTERM,lambda signal,frame: self.db.close())
-
+        #signal.signal(signal.SIGTERM,lambda signal,frame: self.db.close())
+    def getRecordCount(self):
+        return Record.objects.filter(shopifyId="",tranch=self.tranch,recordType=self.type).count()
+    def __iter__(self):
+        return self    
     def __next__(self):
         ret = None
+        
         try:
-            ret = next(self.recordIterator.iterator())
+            ret = next(self.recordIterator)
         except:
+            traceback.print_exc()
+            print("edwqdew")
             raise StopIteration
         return ret
         
+class BatchRecordDeleteIterator(BatchRecordIterator):
+    def __init__(self,type,tranch,segment=None):
+        self.type = type
+        self.tranch = tranch
+        self.segment = segment
+        recordIterator = Record.objects.filter(recordType=type,tranch=tranch).filter(~Q(shopifyId=""))
+        print("dewqdewqd",type,tranch,segment)
+        if segment is not None:
+            recordIterator = recordIterator.filter(segment=segment)
+        
+        self.recordIterator = recordIterator.iterator()
+        #signal.signal(signal.SIGTERM,lambda signal,frame: self.db.close())
+    def getRecordCount(self):
+        return Record.objects.filter(~Q(shopifyId="")).filter(tranch=self.tranch,recordType=self.type).count()
     
         
     
@@ -42,13 +66,13 @@ class BatchOperation:
         self.instance = None
         self.scriptName = sys.argv[0]
         self.args = args
-        for key,value in vars(args).items():
+        for key,value in args.items():
             setattr(self,key,value)
         
         self.logFile = None
         self.slug = slugify(self.scriptName)
         self.processRecord = None
-        shopifyInit()
+        shopifyInit(useProfile=self.arg("profile"))
         signal.signal(signal.SIGINT,lambda signal,frame: self.signalCaught())
         
         
@@ -72,6 +96,8 @@ class BatchOperation:
     def arg(self,key,default=None):
         if hasattr(self,key):
             return getattr(self,key)
+        elif self.args.get(key) is not None:
+            return self.args.get(key)
         return default
     def setArg(self,key,value):
         setattr(self.args,key,value)
@@ -140,17 +166,20 @@ class BatchOperation:
     def beginBatch(self):
         # spawn mother processes
         for tranch in sorted(self.loadTranches()):
-            print(self.scriptName)
+            
+            if self.arg("segments") is None:
+                self.setArg("segments",50)
+            
             operations = [
                 self.scriptName,
-                "--mode","segment"
+                "--mode","segment",
+                "--recordType",self.arg("recordType"),
+                "--profile",self.arg("profile"),
+                "--sourceClass",self.arg("sourceClass"),
+                "--segments",str(self.arg("segments"))
             ]
-            if self.args.segments is None:
-                self.args.segments = 50
-                
-            for k,v in self.args.items():
-                operations = operations + [f"--{k}",v]
-
+            print(" ".join(operations))
+            
             process = subprocess.Popen(
                 operations
             )
@@ -158,6 +187,7 @@ class BatchOperation:
             # wait for at least one process to spawn
             while self.getProcessCount()<1:
                 time.sleep(1)
+                print("hey nowp")
             # now we wait for them all to 
             
         while self.getProcessCount()>0:
@@ -176,37 +206,51 @@ class BatchOperation:
         
         if recordIterator is None:
             return
-        segmentLength = int(self.getRecordCount()/self.arg("segments",100))
         
+        recordCount = recordIterator.getRecordCount()
+        segmentLength = int(recordCount/self.arg("segments",100))
+        
+        if segmentLength==0 and recordCount>0:
+            segmentLength = recordCount
+        elif recordCount<0:
+            return
         processedRecords = 0
         currentSegment = 1
         segments = [1]
         self.startUpdates()
+        record:Record
+        totalRecordsCounted = 0
         for record in recordIterator:
-            self.updateRecord(record.get("externalId"),currentSegment)
+            
+            record.segment=currentSegment
+            record.save()
             processedRecords = processedRecords +1
             if processedRecords % segmentLength == 0:
                 if currentSegment+1<=self.arg("segments"):
-                    print(f"new segment {currentSegment}")
+                   
                     currentSegment = currentSegment + 1
                     segments.append(currentSegment)
         
         self.endUpdates()
-        
         for segment in segments:
-            os.system(f"nohup {self.scriptName} --mode worker --tranch {self.arg('tranch')} --segment {segment} >> /tmp/error.log 2>&1 &")
-        
+            os.system(f"nohup {self.scriptName} --mode worker --tranch {self.arg('tranch')} --segment {segment} --recordType {self.arg('recordType')} --profile {self.arg('profile')}>> logs/error.log 2>&1 &")
         
     def worker(self,recordIterator:BatchRecordIterator=None):
+        
         if recordIterator is None:
             return
         self.createInstance()
         start = time.time()
         processed = 0
         self.log("starting run")
+        record:Record
         for record in recordIterator:
+            if record.shopifyId!="":
+                print(f"skipping {record.externalId}")
+                continue
             self.processWorkerRecord(record)
             processed = processed + 1
         self.log(f"finished run {processed} records in {int(time.time()-start)}")
         self.processRecord.delete()
+        sys.exit()
             

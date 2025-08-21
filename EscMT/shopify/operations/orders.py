@@ -8,6 +8,8 @@ from EscMT.models import *
 from EscMT.graphQL import *
 import signal
 import time
+from django.db.models import Q
+import random
 
 def close_db(signal,frame):
     sys.exit()
@@ -20,166 +22,171 @@ class ShopifyOrderImporter(ShopifyImporter):
         return Order()
     def recordType(self):
         return "order"
-    def run(self):
-        processedCount = 0
-        for orderGroup in self.gql.iterable(
-            """
-            query getOrders($after:String,$query:String) {
-                orders(after:$after,query:$query,first:50) {
-                    nodes {                        
-                        billingAddress {
-                            address1
-                            address2
-                            city
-                            countryCode
-                            firstName
-                            lastName
-                            provinceCode
-                            phone                       
-                            zip
-                        }
-                        shippingAddress {
-                            address1
-                            address2
-                            city
-                            countryCode
-                            firstName
-                            lastName
-                            provinceCode
-                            phone
-                            zip
-                        }
-                        currentTotalWeight
-                        customAttributes {
-                            key
-                            value
-                        }
-                        closed
-                        closedAt
-                        confirmationNumber
-                        confirmed
+    def gqlQuery(self):
+        return """
+        billingAddress {
+            address1
+            address2
+            city
+            countryCode
+            firstName
+            lastName
+            provinceCode
+            phone                       
+            zip
+        }
+        shippingAddress {
+            address1
+            address2
+            city
+            countryCode
+            firstName
+            lastName
+            provinceCode
+            phone
+            zip
+        }
+        currentTotalWeight
+        customAttributes {
+            key
+            value
+        }
+        closed
+        closedAt
+        confirmationNumber
+        confirmed
+        currencyCode
+        customer {
+            id
+            firstName
+            lastName
+            email
+            phone
+            addresses {
+                address1
+                address2
+                city
+                zip
+                country
+                firstName
+                lastName
+                province
+            }
+        }
+        discountApplications(first:10) {
+            nodes {
+                targetType
+                targetSelection
+                allocationMethod
+                index
+                value {
+                    ... on MoneyV2 {
+                        amount
                         currencyCode
-                        customer {
-                            id
-                            firstName
-                            lastName
-                            email
-                            phone
-                            addresses {
-                                address1
-                                address2
-                                city
-                                zip
-                                country
-                                firstName
-                                lastName
-                                province
-                            }
-                        }
-                        discountApplications(first:10) {
-                            nodes {
-                                targetType
-                                targetSelection
-                                allocationMethod
-                                index
-                                value {
-                                    ... on MoneyV2 {
-                                        amount
-                                        currencyCode
-                                    }
-                                    ... on PricingPercentageValue {
-                                        percentage
-                                    }
-                                }
-                            }
-                        }
-                        discountCode
-                        discountCodes
-                        email
-                        
-                        id
-                        lineItems(first:100) {
-                            nodes {
-                                customAttributes {
-                                    key
-                                    value
-                                }
-                                discountAllocations {
-                                    discountApplication{
-                                        value {
-                                            ... on MoneyV2 {
-                                                amount
-                                                currencyCode
-                                            }
-                                            ... on PricingPercentageValue {
-                                                percentage
-                                            }
-                                        }
-                                    }
-                                }
-                                id
-                                image {
-                                    altText
-                                    url
-                                }
-                                isGiftCard
-                                priceSet: originalTotalSet {
-                                    shopMoney {
-                                        amount
-                                        currencyCode
-                                    }
-                                }
-                                quantity
-                                requiresShipping
-                                sku
-                                taxLines {
-                                    priceSet {
-                                        shopMoney {
-                                            amount
-                                            currencyCode
-                                        }
-                                    }
-                                    rate
-                                    title
-                                }
-                                title
-                                variant {
-                                    inventoryItem {
-                                        variant {
-                                            id
-                                        }
-                                            
-                                    }
-                                }
-                                vendor
-                            }
-                        }
-                        name
-                        note
-                        number
-                        processedAt
-                        sourceName
-                        subtotalPriceSet {
-                            shopMoney {
+                    }
+                    ... on PricingPercentageValue {
+                        percentage
+                    }
+                }
+            }
+        }
+        discountCode
+        discountCodes
+        email
+        
+        id
+        lineItems(first:100) {
+            nodes {
+                customAttributes {
+                    key
+                    value
+                }
+                discountAllocations {
+                    discountApplication{
+                        targetSelection
+                        value {
+                            ... on MoneyV2 {
                                 amount
                                 currencyCode
                             }
-                        }
-                        tags
-                        taxesIncluded
-                        taxLines {
-                            priceSet {
-                                shopMoney {
-                                    amount
-                                    currencyCode
-                                }
+                            ... on PricingPercentageValue {
+                                percentage
                             }
-                            rate
-                            title
-                            
                         }
-                        test     
-                        unpaid
+                    }
+                }
+                id
+                image {
+                    altText
+                    url
+                }
+                isGiftCard
+                priceSet: originalTotalSet {
+                    shopMoney {
+                        amount
+                        currencyCode
+                    }
+                }
+                quantity
+                requiresShipping
+                sku
+                taxLines {
+                    priceSet {
+                        shopMoney {
+                            amount
+                            currencyCode
+                        }
+                    }
+                    rate
+                    title
+                }
+                title
+                variant {
+                    inventoryItem {
+                        variant {
+                            id
+                        }
+                            
+                    }
+                }
+                vendor
+            }
+        }
+        name
+        note
+        number
+        processedAt
+        sourceName
+        subtotalPriceSet {
+            shopMoney {
+                amount
+                currencyCode
+            }
+        }
+        tags
+        taxesIncluded
+        taxLines {
+            priceSet {
+                shopMoney {
+                    amount
+                    currencyCode
+                }
+            }
+            rate
+            title
+            
+        }
+        test     
+        unpaid
+        """
+    def stubs(self):
+        for orderGroup in GraphQL().iterable(
+            """
+            query getOrders($after:String) {
+                orders(after:$after,first:250) {
+                    nodes {
+                        id
+                        name
                     }
                     pageInfo {
                         hasNextPage
@@ -188,6 +195,55 @@ class ShopifyOrderImporter(ShopifyImporter):
                 }
             }
             """,
+            {
+                "after":None
+            }
+        ):
+            for order in orderGroup:
+                recordLookup = RecordLookup.objects.create(
+                    externalId=order.get("id"),
+                    recordType="order",
+                    recordKey=order.get("name"),
+                )
+                record = Record.objects.create(
+                    externalId=order.get("id"),
+                    recordType="order",
+                    sourceClass="source",
+                    data={},
+                )
+                record.save()
+                recordLookup.save()
+                
+    def single(self,shopifyId):
+        ret = GraphQL().run(
+            """
+            query getOrder($orderId:ID!) {
+                order(id:$orderId) {
+                    %s
+                }
+            }
+            """ % (self.gqlQuery()),
+            {"orderId":shopifyId}
+        )
+       
+        self.processRecord(GqlReturn(ret.search("data.order")))
+    def run(self):
+        processedCount = 0
+        
+        for orderGroup in self.gql.iterable(
+            """
+            query getOrders($after:String,$query:String) {
+                orders(after:$after,query:$query,first:200) {
+                    nodes {                        
+                    %s
+                    }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                }
+            }
+            """ % (self.gqlQuery()),
             {
                 "after":None,
                 "query":self.searchQuery()
@@ -198,8 +254,8 @@ class ShopifyOrderImporter(ShopifyImporter):
             for order in orderGroup:
                 self.processRecord(order)
             processedCount = processedCount + 1
-            print(f"Processed group {processedCount}")
-            sys.exit()
+            
+            
                 
     def processRecord(self, order):
         
@@ -213,7 +269,7 @@ class ShopifyOrderImporter(ShopifyImporter):
             
         self.createRecords(order.get("name"),order)
         print(f"order {order.get('id')}")
-        ShopifyOrderConsolidator().run(order=order)
+        ShopifyOrderConsolidator(processor=self.processor).run(order=order)
         
                     
                     
@@ -251,7 +307,7 @@ class ShopifyOrderImporter(ShopifyImporter):
                             code
                             source
                             title
-                            priceSet: originalPriceSet {
+                            priceSet: discountedPriceSet {
                                 shopMoney {
                                     amount
                                     currencyCode
@@ -312,13 +368,14 @@ class ShopifyOrderImporter(ShopifyImporter):
         
 class ShopifyOrderConsolidator(ShopifyConsolidator):
     def run(self,order=None,orderId=None):
-        
         if order is not None:
             if isinstance(order,GqlReturn):
                 orderId = order.get("id")
             else:
                 orderId = order.externalId
         orderRecord,raw = super().run(record=order,recordId=orderId)
+        
+        
         
         consolidatedOrder = {
                 "billingAddress":raw.get("billingAddress"),
@@ -328,67 +385,85 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 "email":raw.get("email"),
                 "fulfillmentStatus":self.calculateFulfillment(raw),
                 "customAttributes":raw.get("customAttributes"),
-                "lineItems":self.processLineItems([SearchableDict(lineItem) for lineItem in raw.search("lineItems.nodes")]),
-                "metafields":raw.search("metafields.nodes"),
+                "lineItems":self.processLineItems(
+                      [SearchableDict(lineItem) for lineItem in raw.search("lineItems.nodes")]  
+                ),
+                "metafields":self.processor.additionalOrderMetafields(raw)+raw.search("metafields.nodes",[]),
                 "name":f"PS-{raw.get('number')}",
                 "processedAt":raw.get("processedAt"),
                 "shippingAddress":raw.get("shippingAddress"),
                 "shippingLines":raw.search("shippingLines.nodes"),
                 "tags":["PET order"]+raw.get("tags"),
-                "taxesIncluded":raw.get("taxesIncluded"),
+                "taxesIncluded":raw.get("taxesIncluded"),   
                 "taxLines":raw.get("taxLines"),
                 "transactions":raw.get("transactions"),    
             }
         shopifyCustomerId = ShopifyOperation.lookupItemId(raw.search("customer.id"))
+        
         if shopifyCustomerId is not None:
-            consolidatedOrder["customer"] = {
-                "toAssociate":shopifyCustomerId
-            }
-        else:
-            customerInfo = raw.getAsSearchable("customer")
-            consolidatedOrder["customer"] = {
-                "toUpsert":{
-                    "addresses":customerInfo.get("addresses"),
-                    "firstName":customerInfo.get("firstName"),
-                    "lastName":customerInfo.get("lastName"),
-                    "email":customerInfo.get("email")
+                consolidatedOrder["customer"] = {
+                    "toAssociate":{
+                        "id":shopifyCustomerId
+                    }
                 }
-            }
-            
+        else:
+                customerInfo = raw.getAsSearchable("customer")
+                consolidatedOrder["customer"] = {
+                    "toUpsert":{
+                        "addresses":customerInfo.get("addresses"),
+                        "firstName":customerInfo.get("firstName"),
+                        "lastName":customerInfo.get("lastName"),
+                        "email":customerInfo.get("email")
+                    }
+                }
+        
+        ## for the time being we'll just stick to line-items
+           
         discountCodes = raw.get("discountCodes")
-        discountCodeInput = None
-        hasSpecificLineItemDiscounts = False
-        if len(discountCodes)>0:
-            discountCodeInput = {}
-            for index,application in enumerate([SearchableDict(x) for x in raw.search("discountApplications.nodes")]):
+        if discountCodes is None:
+            discountCodes = []
+        discountCode = raw.get("discountCode")
+        
+        def generateDiscountCode(type="Discount"):
+            return f"{type} {random.randint(10,400)}"
+        discountInput = None
+
+        discountApplications = []
+        for index,application in enumerate([SearchableDict(x) for x in raw.search("discountApplications.nodes")]):
+            if application.get("targetSelection")!="ALL":
+                continue
+            try:
                 discountCode = discountCodes[index]
-                if application.get("targetType")=="SHIPPING_LINE":
-                    discountCodeInput["freeShippingDiscountCode"] = discountCode
-                    continue
-                if application.search("value.percentage") is not None:
-                    discountCodeInput["itemPercentageDiscountCode"] = {
-                        "percentage":application.search("value.percentage"),
-                        "code":discountCodes[index]
+            except:
+                discountCode = generateDiscountCode("Discount")
+            if application.search("value.percentage") is not None:
+                discountInput = {
+                    "itemPercentageDiscountCode":{
+                        "code":discountCode,
+                        "percentage":application.search("value.percentage")
                     }
-                else:
-                    discountCodeInput["itemPercentageDiscountCode"] = {
-                        "amountSet":application.search("value"),
-                        "code":discountCodes[index]
+                }
+            else:
+                discountInput = {
+                    "itemFixedDiscountCode":{
+                        "code":discountCode,
+                        "amountSet":application.search("value.percentage")
                     }
+                }
+                    
+            
                 
-        if discountCodeInput is not None:
-            consolidatedOrder["discountCode"] = discountCodeInput
-        
-                
-                
-        
+        if discountInput is not None:
+            consolidatedOrder["discountCode"] = discountInput
+            
         input = {
             "options":{
                 "inventoryBehaviour":"BYPASS",
                 "sendFulfillmentReceipt":False,
                 "sendReceipt":False
             },
-            "order": consolidatedOrder
+            "order": consolidatedOrder,
+            "lineItemDiscounts":self.lineItemDiscounts(raw)
         }
         
         orderRecord.consolidated = input
@@ -438,6 +513,28 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
             return "PARTIAL"
         elif fulfilledItems==0:
             return 'RESTOCKED"""
+    def lineItemDiscounts(self,order:SearchableDict):
+        discounts = {}
+        hasDiscounts = False
+        lineItem:SearchableDict
+        for index,lineItem in enumerate(order.getAsSearchable("lineItems.nodes")):
+            applications = []
+            for discountAllocation in lineItem.getAsSearchable("discountAllocations"):
+                discountAllocation:SearchableDict
+                if discountAllocation.search("discountApplication.targetSelection") == "ALL":
+                    continue
+                applications.append(discountAllocation.get("discountApplication"))
+                
+            if len(applications):
+                discounts[str(index)] = applications
+                hasDiscounts = True
+        if hasDiscounts:
+            return discounts
+        return None
+                    
+                    
+                
+            
         
     def processLineItems(self,lineItems:List[SearchableDict]):
         processedLineItems = []
@@ -445,9 +542,6 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
             
             processedLineItem = {
                 "quantity":lineItem.get("quantity"),
-                "properties":self.customAttributesToProperties(lineItem.get("customAttributes")),
-                "giftCard":lineItem.get("isGiftCard"),
-                "requiresShipping":lineItem.get("requiresShipping"),
                 #"taxLines":lineItem.get("taxLines"),
                 #"discountAllocations":lineItem.get("discountAllocations",[])
             }
@@ -463,6 +557,9 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 processedLineItem["sku"]=lineItem.get("sku")
                 processedLineItem["title"]=lineItem.get("title")
                 processedLineItem["vendor"]=lineItem.get("vendor")
+                processedLineItem["giftCard"]=lineItem.get("isGiftCard")[0] if isinstance(lineItem.get("giftCard"),list) else lineItem.get("giftCard")
+                processedLineItem["requiresShipping"]=lineItem.get("requiresShipping")[0] if isinstance(lineItem.get("requiresShipping"),list) else lineItem.get("requiresShipping")
+                
                 
                 processedLineItem["priceSet"]={
                     "shopMoney":{                        
@@ -486,15 +583,18 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
 class ShopifyOrderCreator(ShopifyCreator):
     def recordType(self):
         return "order"
+    def sortOrder(self):
+        return "desc"
         
-    def processRecord(self,order:Record):
+    def processRecord(self,order:Record,reconsolidate=True):
         
         recordLookup = super().processRecord(order)
-        consolidated = ShopifyOrderConsolidator().run(orderId=order.externalId)
-        originalLineItems = consolidated["order"].get("lineItems")
-        print(consolidated.get("order"))
-        consolidated["order"]["lineItems"] = [stripDict(x,["discountAllocations"]) for x in consolidated["order"].get("lineItems")]
-        print("creating order")
+        consolidated = order.consolidated
+        if reconsolidate:
+            consolidated = ShopifyOrderConsolidator(processor=self.processor).run(orderId=order.externalId)
+        
+        
+        
         shopifyOrder = GraphQL().run(
             """
             mutation OrderCreate($order: OrderCreateOrderInput!,$options: OrderCreateOptionsInput) {
@@ -510,13 +610,6 @@ class ShopifyOrderCreator(ShopifyCreator):
                         lineItems(first:50) {
                             nodes {
                                 id
-                                discountAllocations {
-                                    allocatedAmountSet {
-                                        shopMoney {
-                                            amount
-                                        }
-                                    }
-                                }
                             }
                             
                         }
@@ -524,9 +617,17 @@ class ShopifyOrderCreator(ShopifyCreator):
                 }
             }
             """,
+            {
+                "options":consolidated.get("options"),
+                "order":consolidated.get("order")
+            },
             consolidated
         )
-        orderId = shopifyOrder.search("data.orderCreate.order.id")
+        try:
+            orderId = shopifyOrder.search("data.orderCreate.order.id")
+        except:
+            print("order is null; timed out")
+            return
         if orderId is None:
             shopifyOrder.dump()
             sys.exit()
@@ -540,33 +641,29 @@ class ShopifyOrderCreator(ShopifyCreator):
         order.save()
         
         hasDiscounts = False
-        lineItems = [SearchableDict(x) for x in originalLineItems]
-        for lineItem in lineItems:
-            lineItem.dump()
-            if len(lineItem.get("discountAllocations",[]))>0:
-                hasDiscounts = True
-                break
-        time.sleep(5)
-        return
-        if not hasDiscounts:
+        print(f"created order {orderId}",flush=True)
+        
+        
+        if consolidated.get("lineItemDiscounts") is None:
             return
-        print("hasDiscounts")
+        lineItemDiscounts:dict = consolidated.get("lineItemDiscounts")
+        
         shopifyOrderEdit = self.orderEditBegin(orderId)
         calculatedOrderId = shopifyOrderEdit.search("data.orderEditBegin.calculatedOrder.id")
         if calculatedOrderId is None:
-            shopifyOrderEdit.dump()
+        
             sys.exit()
             
-        shopifyOrderEdit.dump()
+        
         calculatedOrderLineItems = shopifyOrderEdit.nodes("data.orderEditBegin.calculatedOrder.lineItems")
-        for index,lineItem in enumerate(lineItems):
-            calculatedOrderLineItem = calculatedOrderLineItems[index]
-            if len(lineItem.get("discountAllocations",[]))>0:
-                for lineItemDiscount in [SearchableDict(x) for x in lineItem.get("discountAllocations")]:
+        for index,lineItem in enumerate(calculatedOrderLineItems):
+            lineItemDiscountApplications = lineItemDiscounts.get(str(index))
+            if len(lineItemDiscountApplications)>0:
+                for lineItemDiscountApplication in [SearchableDict(x) for x in lineItemDiscountApplications]:
                     self.addLineItemDiscount(
                         calculatedOrderId,
-                        calculatedOrderLineItem.get("id"),
-                        lineItemDiscount.getAsSearchable("discountApplication")
+                        lineItem.get("id"),
+                        lineItemDiscountApplication
                     )
         self.orderEditClose(calculatedOrderId)
             
@@ -598,7 +695,7 @@ class ShopifyOrderCreator(ShopifyCreator):
         )
         
     def addLineItemDiscount(self,orderEditId,orderEditLineItemId,discount):
-        print("adding line discount")
+        
         discountDetails = None
         if discount.search("value.percentage"):
             discount = {
@@ -649,7 +746,7 @@ class ShopifyOrderCreator(ShopifyCreator):
                 "discount":discount
             }
         )
-        addDiscount.dump()
+        
         
         pass
     def orderEditClose(self,orderId):
@@ -685,24 +782,21 @@ class ShopifyOrderCreator(ShopifyCreator):
         
         
 class ShopifyOrderDeleter(ShopifyDeleter):
-    def run(self,record,all=False):
+    
+    
+    def run(self,record:Record=None,all=False):
         if isinstance(record,SearchableDict):
             self.delete(record.get("id"))
         if all:
-            for record in Record.objects.filter(recordType="order").all():
+            for record in Record.objects.filter(recordType="order").filter(~Q(shopifyId="")).all():
                 if record.shopifyId!="":
-                    #recordLookup = RecordLookup.objects.get(shopifyId=record.shopifyId)
-                    
                     self.delete(record.shopifyId)
-                    #record.shopifyId = ""
-                    #record.save()
-                    #recordLookup.save()
         else:
             self.delete(record.shopifyId)
             
             
     def delete(self,shopifyId):
-        print(shopifyId)
+        print(shopifyId,flush=True)
         ret =  GraphQL().run(
             """
             mutation OrderDelete($orderId: ID!) {
@@ -718,4 +812,12 @@ class ShopifyOrderDeleter(ShopifyDeleter):
             """,
             {"orderId":shopifyId}
         )
+        deletedOrderId = ret.search("data.orderDelete.deletedId")
+        if deletedOrderId is not None:
+            record = Record.objects.get(shopifyId=shopifyId)
+            recordLookup = RecordLookup.objects.get(externalId=record.externalId)
+            for toClear in [record,recordLookup]:
+                toClear.shopifyId = ""
+                toClear.numericShopifyId = None
+                toClear.save()
         ret.dump()

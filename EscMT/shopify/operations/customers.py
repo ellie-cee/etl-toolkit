@@ -1,5 +1,5 @@
 from EscMT.base import *
-from .base import ShopifyImporter,ShopifyCreator,ShopifyConsolidator
+from .base import ShopifyImporter,ShopifyCreator,ShopifyConsolidator,ShopifyDeleter
 import mysql.connector
 import os
 from EscMT.misc import jsonify,loadProfiles,shopifyInit
@@ -78,7 +78,7 @@ class ShopifyCustomerImporter(ShopifyImporter):
             if email is None:
                 return
         self.createRecords(email,customer)
-        ShopifyCustomerConsolidator().run(customerId=customer.get("id"))
+        ShopifyCustomerConsolidator(processor=self.processor).run(customerId=customer.get("id"))
         
                     
 class ShopifyCustomerConsolidator(ShopifyConsolidator):
@@ -96,7 +96,7 @@ class ShopifyCustomerConsolidator(ShopifyConsolidator):
                 "firstName":raw.get("firstName"),
                 "lastName":raw.get("lastName"),
                 "note":raw.get("note"),
-                "metafields":raw.search("metafields.nodes"),
+                "metafields":self.processor.additionalOrderMetafields()+raw.search("metafields.nodes"),
                 "note":raw.get("note"),
                 "tags":raw.get("tags")+["PET Customer"],
                 "taxExempt":raw.get("taxExempt"),
@@ -121,10 +121,10 @@ class ShopifyCustomerConsolidator(ShopifyConsolidator):
 class ShopifyCustomerCreator(ShopifyCreator):
     def recordType(self):
         return "customer"
-    def processRecord(self,customer:Record):
-        
+    def processRecord(self,customer:Record,reconsolidate=True):
+        print("processing record")
         recordLookup = super().processRecord(customer)
-        consolidated = ShopifyCustomerConsolidator().run(customerId=customer.externalId)
+        consolidated = ShopifyCustomerConsolidator(processor=self.processor).run(customerId=customer.externalId)
         
         shopify = GraphQL().run(
             """
@@ -140,8 +140,10 @@ class ShopifyCustomerCreator(ShopifyCreator):
                 }
             }
             """,
-            product.consolidated
+            customer.consolidated,
+            throttle=5000
         )
+        
         customerId = shopify.search("data.customerCreate.customer.id")
         if customerId is not None:
             recordLookup.shopifyId = customerId
@@ -150,3 +152,41 @@ class ShopifyCustomerCreator(ShopifyCreator):
             customer.save()
         else:
             shopify.dump()
+class ShopifyCustomerDeleter(ShopifyDeleter):
+    def run(self,record,all=False):
+        if isinstance(record,SearchableDict):
+            self.delete(record.get("id"))
+        if all:
+            for record in Record.objects.filter(recordType="order").all():
+                if record.shopifyId!="":
+                    #recordLookup = RecordLookup.objects.get(shopifyId=record.shopifyId)
+                    
+                    self.delete(record.shopifyId)
+                    #record.shopifyId = ""
+                    #record.save()
+                    #recordLookup.save()
+        else:
+            self.delete(record.shopifyId)
+            
+            
+    def delete(self,shopifyId):
+        print(f"deleting {shopifyId}")
+        print(shopifyId)
+        ret =  GraphQL().run(
+            """
+            mutation customerDelete($id: ID!) {
+                customerDelete(input: {id: $id}) {
+                    shop {
+                       id
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                    deletedCustomerId
+                }   
+            }
+            """,
+            {"id":shopifyId}
+        )
+        

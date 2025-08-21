@@ -5,7 +5,7 @@ import os
 from EscMT.misc import jsonify,loadProfiles,shopifyInit
 from EscMT.models import *
 from EscMT.graphQL import *
-from ..project import ProjectSecific
+
 
 class ShopifyProductImporter(ShopifyImporter):
     def setGql(self):
@@ -16,7 +16,7 @@ class ShopifyProductImporter(ShopifyImporter):
         for productGroup in self.gql.iterable(
             """
             query getProducts($after:String,$query:String) {
-                products(after:$after,query:$query,first:50) {
+                products(after:$after,query:$query,first:250) {
                     nodes {
                         id
                         category {
@@ -123,7 +123,7 @@ class ShopifyProductImporter(ShopifyImporter):
                 self.processRecord(product)
                 
             self.showGroup()
-            sys.exit()
+            
                 
     def loadOverageItems(self,product):
         record = self.gql.run(
@@ -242,21 +242,7 @@ class ShopifyProductImporter(ShopifyImporter):
         for variant in product.nodes("variants"):
             
             if variant.get("image") is not None:
-                print("UPLOADING FIEL")
-                details:dict = variant.get("image")
-                fileUpload = Files().upload(
-                    details.get("url"),
-                    details.get("altText")
-                )
-                mediaId = fileUpload.search("data.fileCreate.files[0].id")
-                record = RecordLookup.objects.create(
-                    recordKey=details.get("url").split("?")[0].split("/")[-1],
-                    recordType="variantImage",
-                    externalId=details.get("id"),
-                    shopifyId=mediaId,
-                    url=details.get("url")
-                )
-                record.save()
+                pass
             
             recordKey = None
             for recordKeyCandidate in ["sku","barcode","displayName"]:
@@ -269,7 +255,7 @@ class ShopifyProductImporter(ShopifyImporter):
             
         #scan media items for source record
         if self.sourceClass == "source":
-            ShopifyProductConsolidator().run(product)
+            ShopifyProductConsolidator(processor=self.processor).run(product)
             
 class ShopifyProductConsolidator(ShopifyConsolidator):
     def recordType(self):
@@ -319,7 +305,7 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                     "productType":raw.get("productType"),
                     "status":"DRAFT",
                     "tags":raw.get("tags")+["petshop-import"],
-                    "metafields":ProjectSecific.additionalProductMetafields(raw)+self.mapMetafields(raw.search("metafields.nodes")),
+                    "metafields":self.processor.additionalProductMetafields(raw)+self.mapMetafields(raw.search("metafields.nodes")),
                     "seo":raw.get("seo"),
                     "templateSuffix":raw.get("templateSuffix"),
                     "title":raw.get("title"),
@@ -351,7 +337,7 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                 "barcode":variant.get("barcode"),
                 "compareAtPrice":variant.get("compareAtPrice"),
                 "inventoryPolicy":variant.get("inventoryPolicy"),
-                "metafields":ProjectSecific.additionalVariantMetafields(variant)+self.mapMetafields(variant.search("metafields.nodes")),
+                "metafields":self.processor.additionalVariantMetafields(variant)+self.mapMetafields(variant.search("metafields.nodes")),
                 "optionValues":[
                     {
                         "optionName":option.get("name"),
@@ -367,7 +353,7 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                 "price":variant.get("price"),
                 "taxable":variant.get("taxable"),
             }
-            if variant.get("image") is not None:
+            if False:#variant.get("image") is not None or False:
                 imageRecord = RecordLookup.objects.get(externalId=variant.get("image.id"))
                 if imageRecord is not None:
                     variantInput["mediaId"] = imageRecord.shopifyId
@@ -398,7 +384,7 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                 "value":metafield.get("value"),
                 
             } 
-            for metafield in metafields
+            for metafield in filter(lambda x:x.get("type") not in ["list.metaobject_reference","metaobject_reference"],metafields)
         ]
     def mapProductOptions(self,options):
         return [{
@@ -414,14 +400,16 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
 class ShopifyProductCreator(ShopifyCreator):
     def recordType(self):
         return "product"
-    def consolidator(self):
-        return ShopifyProductConsolidator()
-    
-    def processRecord(self,product:Record):
+    def processRecord(self,product:Record,reconsolidate=True):
         recordLookup = super().processRecord(product)
-        
-        consolidated = self.consolidator().run(productId=product.externalId)
-        product.save()
+        consolidated = product.consolidated
+        if reconsolidate:
+            consolidated = ShopifyProductConsolidator(processor=self.processor).run(productId=product.externalId)
+            product.save()
+        else:
+            if isinstance(consolidated,str):
+                consolidated = json.loads(consolidated)
+                
         productInput = consolidated.get("productInput")
         shopifyProduct = GraphQL().run(
             """
@@ -437,7 +425,8 @@ class ShopifyProductCreator(ShopifyCreator):
                 }
             }
             """,
-            productInput
+            productInput,
+            throttle=5000
         )
         productId = shopifyProduct.search("data.productCreate.product.id")
         if productId is None:
@@ -473,7 +462,8 @@ class ShopifyProductCreator(ShopifyCreator):
                 {
                     "productId":productId,
                     "variants":consolidated.get("variantInput")
-                }
+                },
+                throttle=5000
                 
             )
             
@@ -494,7 +484,7 @@ class ShopifyProductCreator(ShopifyCreator):
                             existingRecord.save()
                     except:
                         productVariants.dump()
-            print(f"Created record {productId}")
+            print(f"Created record {productId}",flush=True)
                         
 class ShopifyProductDeleter:
     def run(self,record:Record=None,all=False):
