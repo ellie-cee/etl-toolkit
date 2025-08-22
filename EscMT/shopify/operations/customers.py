@@ -229,4 +229,51 @@ class ShopifyCustomerDeleter(ShopifyDeleter):
             """,
             {"id":shopifyId}
         )
+
+class ShopifyCustomerSync(ShopifyOperation):
+    def run(self,sourceProfile="default",destProfile="dest"):
+        for record in Record.objects.filter(recordType="customer").filter(~Q(shopifyId="")).all():
+            shopifyInit(useProfile=sourceProfile)
+            customer = GraphQL().run(
+                """
+                query getCustomer($customerId:ID!) {
+                    customer(id:$customerId) {
+                        id
+                        marketingState
+                    }
+                }
+                """,
+                {"productId":record.externalId}
+            ).getDataRoot()
+            try:
+                self.processRecord(customer,destProfile=destProfile)
+            except:
+                continue
+    def processRecord(self, record:GqlReturn,destProfile="dest"):
         
+        shopifyInit(useProfile=destProfile)
+        customerUpdate = GraphQL().run(
+            """
+            mutation updateCustomerMetafields($input: CustomerInput!) {
+                customerUpdate(input: $input) {
+                    customer {
+                        id
+      
+                    }
+                }
+                
+                userErrors {
+                    message
+                    field
+                }
+            }
+            """,
+            {   
+            "input":{
+                "id":ShopifyOperation.lookupItemId(record.get("id")),
+                "emailMarketingConsent":{
+                    "marketingState":record.get("marketinSgtate")
+                    }
+                }    
+            }
+        )
