@@ -38,6 +38,7 @@ class ShopifyOperation:
                 return record.shopifyId
             return None
         except:
+            traceback.print_exc()
             return None
     
 class ShopifyImporter(ShopifyOperation):

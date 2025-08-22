@@ -552,6 +552,7 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 
             if shopifyVariantId is not None:
                 processedLineItem["variantId"] = shopifyVariantId
+                
             else:
                 
                 processedLineItem["sku"]=lineItem.get("sku")
@@ -561,12 +562,12 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 processedLineItem["requiresShipping"]=lineItem.get("requiresShipping")[0] if isinstance(lineItem.get("requiresShipping"),list) else lineItem.get("requiresShipping")
                 
                 
-                processedLineItem["priceSet"]={
-                    "shopMoney":{                        
-                        "currencyCode":lineItem.search("priceSet.shopMoney.currencyCode"),
-                        "amount":float(lineItem.search("priceSet.shopMoney.amount"))/lineItem.get("quantity")
-                    }
+            processedLineItem["priceSet"]={
+                "shopMoney":{                        
+                    "currencyCode":lineItem.search("priceSet.shopMoney.currencyCode"),
+                    "amount":float(lineItem.search("priceSet.shopMoney.amount"))/lineItem.get("quantity")
                 }
+            }
                                                          
             processedLineItems.append(processedLineItem)
         return processedLineItems

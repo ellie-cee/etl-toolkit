@@ -503,3 +503,135 @@ class ShopifyProductDeleter:
             """,
             {"orderId":shopifyId}
         )
+        
+class ShopifyProductSync(ShopifyOperation):
+    def run(self,sourceProfile="default",destProfile="dest"):
+        for record in Record.objects.filter(recordType="product").filter(~Q(shopifyId="")).all():
+            shopifyInit(useProfile=sourceProfile)
+            variants = GraphQL().run(
+                """
+                query getProduct($productId:ID!) {
+                    product(id:$productId) {
+                        id
+                        variants(first:100) {
+                            nodes {
+                                id
+                                inventoryItem {
+                                    inventoryLevels(first:10) {
+                                        nodes {
+                                            location {
+                                                id
+                                            }
+                                            quantities(names:["on_hand"]) {
+                                                quantity
+                                            }
+                                        }
+                                    }    
+                                }
+                                price
+                            }
+                        }
+                    }
+                }
+                """,
+                {"productId":record.externalId}
+            )
+            try:
+                self.processRecord(variants,destProfile=destProfile)
+            except:
+                continue
+    def processRecord(self, record:GqlReturn,destProfile="dest"):
+        
+        
+        updateInput = []
+        
+        
+        
+        for variant in record.nodes("data.product.variants"):
+            inventoryUpdates = [
+                {
+                    "quantity":x.search("quantities[0].quantity"),
+                    "locationId":ShopifyOperation.lookupItemId(x.search("location.id")),
+                                    
+                } for x in variant.nodes("inventoryItem.inventoryLevels")
+            ]
+            updateInput.append(
+                {
+                    "id":ShopifyOperation.lookupItemId(variant.get("id")),
+                    "price":variant.get("price")
+                }
+            )
+           
+        
+        shopifyInit(useProfile=destProfile)
+        productVariants = GraphQL().run(
+            """
+            mutation productVariantsUpdate($productId:ID!,$variants:[ProductVariantsBulkInput!]!) {
+                productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                    productVariants {
+                        id
+                        title
+                        sku
+                        price
+                        selectedOptions {
+                            name
+                            value
+                        }
+                        inventoryItem {
+                            id
+                        }
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+            """,
+            {
+                "productId":ShopifyOperation.lookupItemId(record.search("data.product.id")),
+                "variants":updateInput
+            },
+        )
+        print(ShopifyOperation.lookupItemId(record.search("data.product.id")))
+        
+        variantInventoryUpdateItems = []
+        
+        for index,variant in enumerate(productVariants.getAsSearchable("data.productVariantsBulkUpdate.productVariants")):
+            variantUpdateItem = inventoryUpdates[index]
+            variantUpdateItem["inventoryItemId"] = variant.search("inventoryItem.id")
+            variantInventoryUpdateItems.append(variantUpdateItem)
+            
+        inventoryUpdate = GraphQL().run(
+            """
+            mutation InventorySet($input: InventorySetQuantitiesInput!) {
+                inventorySetQuantities(input: $input) {
+                    inventoryAdjustmentGroup {
+                        createdAt
+                        reason
+                        referenceDocumentUri
+                        changes {
+                           name
+                         delta
+                        }
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+            """,
+            {   "input":{
+                    "ignoreCompareQuantity":True,
+                    "name":"available",
+                    "reason":"correction",
+                    "quantities":variantInventoryUpdateItems,
+                }
+            }
+        )
+        
+        
+            
+        
+        
