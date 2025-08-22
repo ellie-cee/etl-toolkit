@@ -27,7 +27,7 @@ class ShopifyQueryGenerator:
             if self.sourceClass != "source":
                 sortField = "numericShopifyId"
             
-            latest = RecordLookup.objects.filter(recordType=self.useRecordType).order_by(f"{sortField}").first()
+            latest = RecordLookup.objects.filter(recordType=self.useRecordType).order_by(f"-{sortField}").first()
             if latest is None:
                 return ""
             sortValue = getattr(latest,sortField)
@@ -74,7 +74,11 @@ class ShopifyOperation:
         except:
             traceback.print_exc()
             return None
-    
+    @staticmethod
+    def gided(id,type):
+        if isinstance(id,int) or not id.startswith("gid"):
+            return f"gid://shopify/{type}/{id}"
+        return id
 class ShopifyImporter(ShopifyOperation):
     def rowCount(self):
         self.groupsProcessed = self.groupsProcessed + 1

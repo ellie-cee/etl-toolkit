@@ -151,7 +151,16 @@ class ShopifyCustomerCreator(ShopifyCreator):
             customer.shopifyId = customerId
             customer.save()
         else:
-            shopify.dump()
+            customerFound = Customer().find(recordLookup.recordKey)
+            print(recordLookup.recordKey)
+            customerFound.dump()
+            if customerFound:
+                recordLookup.shopifyId = customerFound.get("id")
+                customer.shopifyId = customerFound.get("id")
+                recordLookup.save()
+                customer.save()
+    
+        
 class ShopifyCustomerDeleter(ShopifyDeleter):
     def run(self,record,all=False):
         if isinstance(record,SearchableDict):

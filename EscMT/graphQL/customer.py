@@ -57,7 +57,7 @@ class Customer(GraphQL):
             {"query":f"email:{email}"},
             searchable=True
         )
-        candidates = customers.search("data.customers.nodes || []")
+        candidates = customers.nodes("data.customers")
         if candidates is None:
             return None
         else:
