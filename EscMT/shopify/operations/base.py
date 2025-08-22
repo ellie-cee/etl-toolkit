@@ -7,14 +7,28 @@ from EscMT.graphQL import *
 from django.db.models import Q
 
 class ProjectCreatorOptions:
-    def additionalProductMetafields(self,record:SearchableDict):
-        return []
-    def additionalVariantMetafields(self,record:SearchableDict):
-        return []
-    def additionalOrderMetafields(self,record:SearchableDict):
-        return []
-    def additionalCustomerMetafields(self,record:SearchableDict):
-        return []
+    def productMetafields(self,record:SearchableDict,metafields):
+        return metafields
+    def variantMetafields(self,record:SearchableDict):
+        return metafields
+    def orderMetafields(self,record:SearchableDict,metafields):
+        return metafields
+    def customerMetafields(self,record:SearchableDict,metafields):
+        return metafields
+    def orderName(self,number):
+        return f"#{number}"
+    def orderFinalizeConsolidated(self,consolidated):
+        return consolidated
+    def productFinalizeConsolidated(self,consolidated):
+        return consolidated
+    def productFinalizeConsolidated(self,consolidated):
+        return consolidated
+    def productTags(self,tags):
+        return tags
+    def orderTags(self,tags):
+        return tags
+    def customerTags(self,tags):
+        return tags
 class ShopifyQueryGenerator:
     def __init__(self,sourceClass="source"):
         self.sourceClass = sourceClass
@@ -68,12 +82,14 @@ class ShopifyOperation:
     def lookupItemId(itemGid):
         try:
             record = RecordLookup.objects.get(externalId=itemGid)
+            if record is None:
+                return itemGid
             if record.shopifyId!="":
                 return record.shopifyId
             return None
         except:
-            traceback.print_exc()
-            return None
+            return itemGid
+        
     @staticmethod
     def gided(id,type):
         if isinstance(id,int) or not id.startswith("gid"):
@@ -124,6 +140,8 @@ class ShopifyImporter(ShopifyOperation):
             sourceRecord.sourceClass = self.sourceClass
             sourceRecord.recordType = recordType
             sourceRecord.save()
+            
+        return record,mappingRecord
     
     def createUniqueRecord(self,recordKey,itemId,recordType,url="",parentId="",alt=""):
         mappingRecord,created = RecordLookup.objects.get_or_create(recordKey=recordKey)
@@ -142,8 +160,10 @@ class ShopifyConsolidator:
     def __init__(self,processor:ProjectCreatorOptions=ProjectCreatorOptions()):
         
         self.processor = processor
-    def run(self,record:GqlReturn=None,recordId:int=None) -> tuple[Record,SearchableDict]:
+    def run(self,record:GqlReturn=None,savedRecord:Record=None,recordId:int=None) -> tuple[Record,SearchableDict]:
         
+        if savedRecord is not None:
+            return savedRecord,savedRecord.getData()
         
         if record is not None:
             recordId = record.get("id")

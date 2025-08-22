@@ -304,8 +304,8 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                     "productOptions":self.mapProductOptions(raw.get("options")),
                     "productType":raw.get("productType"),
                     "status":"DRAFT",
-                    "tags":raw.get("tags")+["petshop-import"],
-                    "metafields":self.processor.additionalProductMetafields(raw)+self.mapMetafields(raw.search("metafields.nodes")),
+                    "tags":self.processor.productTags(raw.get("tags")),
+                    "metafields":self.processor.productMetafields(raw,self.mapMetafields(raw.search("metafields.nodes"))),
                     "seo":raw.get("seo"),
                     "templateSuffix":raw.get("templateSuffix"),
                     "title":raw.get("title"),
@@ -337,7 +337,7 @@ class ShopifyProductConsolidator(ShopifyConsolidator):
                 "barcode":variant.get("barcode"),
                 "compareAtPrice":variant.get("compareAtPrice"),
                 "inventoryPolicy":variant.get("inventoryPolicy"),
-                "metafields":self.processor.additionalVariantMetafields(variant)+self.mapMetafields(variant.search("metafields.nodes")),
+                "metafields":self.processor.variantMetafields(variant,self.mapMetafields(variant.search("metafields.nodes"))),
                 "optionValues":[
                     {
                         "optionName":option.get("name"),

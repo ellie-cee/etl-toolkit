@@ -217,6 +217,7 @@ class ShopifyOrderImporter(ShopifyImporter):
                 recordLookup.save()
                 
     def singleRecord(self,shopifyId):
+        print(ShopifyOperation.gided(shopifyId,"Order"))
         order = GraphQL().run(
             """
             query getOrder($orderId:ID!) {
@@ -229,7 +230,6 @@ class ShopifyOrderImporter(ShopifyImporter):
             """,
             {"orderId":ShopifyOperation.gided(shopifyId,"Order")}
         ).getDataRoot()
-        
         return self.processRecord(order)
     
     def run(self):
@@ -276,7 +276,7 @@ class ShopifyOrderImporter(ShopifyImporter):
                     
                     
     def loadApiOverageItems(self,order:GqlReturn)->GqlReturn:
-        ret = self.gql.run(
+        overages = self.gql.run(
             """
             query getOrder($orderId:ID!) {
                 order(id:$orderId) {
@@ -327,7 +327,12 @@ class ShopifyOrderImporter(ShopifyImporter):
                             }
                         }
                         
-                    } 
+                    }
+                    fulfillmentOrders(first:10) {
+                        nodes {
+                            status
+                        }
+                    }
                     fulfillments(first:20) {
                         status
                         createdAt
@@ -362,11 +367,14 @@ class ShopifyOrderImporter(ShopifyImporter):
             {
                 "orderId":order.get("id")
             }
-        )
+        ).getDataRoot()
         
-        if ret.search("data.order.id") is None:
-            ret.dump()
-            sys.exit()
+        if overages.get("id") is None:
+            overages.dump()     
+            
+            
+        for key,value in overages.data.items():
+            order.set(key,value)
         
         return order
     
@@ -374,7 +382,7 @@ class ShopifyOrderImporter(ShopifyImporter):
 class ShopifyOrderConsolidator(ShopifyConsolidator):
     def run(self,order=None,orderId=None):
         if order is not None:
-            if isinstance(order,GqlReturn):
+            if isinstance(order,GqlReturn) or isinstance(order,SearchableDict):
                 orderId = order.get("id")
             else:
                 orderId = order.externalId
@@ -393,12 +401,12 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 "lineItems":self.processLineItems(
                       [SearchableDict(lineItem) for lineItem in raw.search("lineItems.nodes")]  
                 ),
-                "metafields":self.processor.additionalOrderMetafields(raw)+raw.search("metafields.nodes",[]),
-                "name":f"PS-{raw.get('number')}",
+                "metafields":self.processor.orderMetafields(raw,raw.search("metafields.nodes",[])),
+                "name":self.processor.orderName(raw.get("number")),
                 "processedAt":raw.get("processedAt"),
                 "shippingAddress":raw.get("shippingAddress"),
                 "shippingLines":raw.search("shippingLines.nodes"),
-                "tags":["PET order"]+raw.get("tags"),
+                "tags":self.processor.orderTags(raw.get("tags")),
                 "taxesIncluded":raw.get("taxesIncluded"),   
                 "taxLines":raw.get("taxLines"),
                 "transactions":raw.get("transactions"),    
@@ -471,9 +479,12 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
             "lineItemDiscounts":self.lineItemDiscounts(raw)
         }
         
-        orderRecord.consolidated = input
+        orderRecord.consolidated = self.processor.orderFinalizeConsolidated(input)
         orderRecord.save()
-        return input
+        print("dewdeq")
+        print(input)
+        return orderRecord.consolidated
+    
     def calculateFulfillment(self,order:SearchableDict):
         
         totalItemsCount = functools.reduce(
@@ -491,6 +502,7 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                     fulfillment.search("fulfillmentLineItems.nodes",[]),
                     0
                 )
+        print(totalItemsCount,successfulfullfillmentsCount)
         if successfulfullfillmentsCount>=totalItemsCount:
             return "FULFILLED"
         elif successfulfullfillmentsCount<1:

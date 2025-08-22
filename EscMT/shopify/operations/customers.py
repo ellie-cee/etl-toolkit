@@ -118,9 +118,9 @@ class ShopifyCustomerConsolidator(ShopifyConsolidator):
                 "firstName":raw.get("firstName"),
                 "lastName":raw.get("lastName"),
                 "note":raw.get("note"),
-                "metafields":self.processor.additionalCustomerMetafields(raw)+raw.search("metafields.nodes"),
+                "metafields":self.processor.customerMetafields(raw,raw.search("metafields.nodes")),
                 "note":raw.get("note"),
-                "tags":raw.get("tags")+["PET Customer"],
+                "tags":self.processor.customerTags(raw.get("tags")),
                 "taxExempt":raw.get("taxExempt"),
                 "taxExemptions":raw.get("taxExemptions")
             }

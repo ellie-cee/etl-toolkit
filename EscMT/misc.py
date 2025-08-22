@@ -93,6 +93,15 @@ class SearchableDict:
     @staticmethod
     def fromList(list):
         return [SearchableDict(x) for x in list]
+    def dumpField(self,path):
+        ret = self.search(path)
+        if ret is None:
+            print("None")
+        else:
+            if isinstance(ret,dict) or isinstance(ret,list):
+                print(json.dumps(ret,indent=1))
+            else:
+                print(ret)
     
 class GqlReturn(SearchableDict):
     def errors(self,dump=False):
@@ -147,13 +156,17 @@ class GqlReturn(SearchableDict):
         return False
     def getDataRoot(self):
         actualData = None
-        for key,value in self.data.items():
+        if self.data.get("data") is None:
+            return self
+        
+        for key,value in self.data.get("data").items():
             if key not in ["errors","userErrors"]:
-                actualData = self.data.get(key)
+                actualData = value        
                 break
         if actualData is not None:
             self.data = actualData
-        return self
+        return SearchableDict(self.data)
+    
 
 class GwlReturnV2(GqlReturn):
     def __init__(self,data):
