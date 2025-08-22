@@ -44,6 +44,8 @@ def catchNetWorkError(fn):
                 retryCount = retryCount + 1
                 log(f"retrying {retryCount}/10")
                 time.sleep(3)
+            except KeyboardInterrupt:
+                sys.exit()
             except Exception as e:
                 retryCount = retryCount + 1
                 log(f"retrying {retryCount}/10")

@@ -1,5 +1,5 @@
 from EscMT.base import *
-from .base import ShopifyImporter,ShopifyCreator,ShopifyConsolidator,ShopifyDeleter
+from .base import *
 import mysql.connector
 import os
 from EscMT.misc import jsonify,loadProfiles,shopifyInit
@@ -9,45 +9,66 @@ from EscMT.graphQL import *
 class ShopifyCustomerImporter(ShopifyImporter):
     def setGql(self):
         return Customer()
-    
+    def gqlQuery(self):
+        return """
+            id
+            addresses {
+                address1
+                address2
+                city
+                company
+                countryCode
+                firstName
+                lastName
+                phone
+                provinceCode
+                zip
+            }
+            defaultEmailAddress {
+                emailAddress
+            }
+            metafields(first:5) {
+                nodes {
+                    namespace
+                    key
+                    value
+                    type
+                }
+            }
+            email
+            firstName
+            lastName
+            note
+            tags
+            taxExempt
+            taxExemptions
+            
+        """
+    def singleRecord(self,customerId):
+        customer = GraphQL().run(
+            """
+            query getCustomer($customerId:ID!) {
+                customer(id:$customerId) {
+            """
+            + self.gqlQuery() +
+            """
+                }
+            }
+            """,
+            {
+                "customerId":ShopifyOperation.gided(customerId,"Customer")
+            }
+        ).getDataRoot()
+        return self.processRecord(customer)
     def run(self):
         for customerGroup in self.gql.iterable(
             """
             query getCustomers($after:String,$query:String) {
                 customers(first:250,after:$after,query:$query) {
                     nodes {
-                        id
-                        addresses {
-                            address1
-                            address2
-                            city
-                            company
-                            countryCode
-                            firstName
-                            lastName
-                            phone
-                            provinceCode
-                            zip
-                        }
-                        defaultEmailAddress {
-                            emailAddress
-                        }
-                        metafields(first:5) {
-                            nodes {
-                                namespace
-                                key
-                                value
-                                type
-                            }
-                        }
-                        email
-                        firstName
-                        lastName
-                        note
-                        tags
-                        taxExempt
-                        taxExemptions
-                        
+            """
+            + self.gqlQuery() +
+            """
                     }
                     pageInfo {
                         hasNextPage
@@ -79,6 +100,7 @@ class ShopifyCustomerImporter(ShopifyImporter):
                 return
         self.createRecords(email,customer)
         ShopifyCustomerConsolidator(processor=self.processor).run(customerId=customer.get("id"))
+        return customer
         
                     
 class ShopifyCustomerConsolidator(ShopifyConsolidator):
@@ -96,7 +118,7 @@ class ShopifyCustomerConsolidator(ShopifyConsolidator):
                 "firstName":raw.get("firstName"),
                 "lastName":raw.get("lastName"),
                 "note":raw.get("note"),
-                "metafields":self.processor.additionalOrderMetafields()+raw.search("metafields.nodes"),
+                "metafields":self.processor.additionalCustomerMetafields(raw)+raw.search("metafields.nodes"),
                 "note":raw.get("note"),
                 "tags":raw.get("tags")+["PET Customer"],
                 "taxExempt":raw.get("taxExempt"),
@@ -122,7 +144,7 @@ class ShopifyCustomerCreator(ShopifyCreator):
     def recordType(self):
         return "customer"
     def processRecord(self,customer:Record,reconsolidate=True):
-        print("processing record")
+        
         recordLookup = super().processRecord(customer)
         consolidated = ShopifyCustomerConsolidator(processor=self.processor).run(customerId=customer.externalId)
         
@@ -151,6 +173,15 @@ class ShopifyCustomerCreator(ShopifyCreator):
             customer.shopifyId = customerId
             customer.save()
         else:
+            customerFound = Customer().find(recordLookup.recordKey)
+            print(recordLookup.recordKey)
+            customerFound.dump()
+            if customerFound:
+                recordLookup.shopifyId = customerFound.get("id")
+                customer.shopifyId = customerFound.get("id")
+                recordLookup.save()
+                customer.save()
+                
             shopify.dump()
 class ShopifyCustomerDeleter(ShopifyDeleter):
     def run(self,record,all=False):

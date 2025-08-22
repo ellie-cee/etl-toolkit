@@ -81,7 +81,7 @@ class ShopifyProductImporter(ShopifyImporter):
             
             vendor 
         """
-    def get(self,productId):
+    def singleRecord(self,productId):
         product = GraphQL().run(
             """
             query getProduct($id:ID!) {
@@ -91,9 +91,13 @@ class ShopifyProductImporter(ShopifyImporter):
             """,
             {"productId":productId}
             )
-        """
+        """,
+        {
+            "id":ShopifyOperation.gided(productId,"Product")
+        }
         ).getDataRoot()
-        self.loadOverageItems(product)
+        return self.processRecord(product)
+        
     def run(self):
         
         for productGroup in self.gql.iterable(
@@ -118,7 +122,7 @@ class ShopifyProductImporter(ShopifyImporter):
             }
         ):
             for product in productGroup:
-                self.loadOverageItems(product)
+                
                 self.processRecord(product)
                 
             self.showGroup()
@@ -221,6 +225,7 @@ class ShopifyProductImporter(ShopifyImporter):
         pass
         
     def processRecord(self,product:GqlReturn):
+        self.loadOverageItems(product)
         handle = product.get("handle")
         if product.get("id") is None:
             product.dump()
@@ -250,6 +255,7 @@ class ShopifyProductImporter(ShopifyImporter):
         #scan media items for source record
         if self.sourceClass == "source":
             ShopifyProductConsolidator(processor=self.processor).run(product)
+        return product
             
 class ShopifyProductConsolidator(ShopifyConsolidator):
     def recordType(self):

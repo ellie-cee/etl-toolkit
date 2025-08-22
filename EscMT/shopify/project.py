@@ -35,5 +35,7 @@ class FringeProcessor(ProjectCreatorOptions):
                 "value":order.get("id").split("/")[-1]
             }
        ]
+    def additionalCustomerMetafields(self, record):
+        return super().additionalCustomerMetafields(record)
         
     
