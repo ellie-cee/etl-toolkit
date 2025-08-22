@@ -216,7 +216,7 @@ class ShopifyOrderImporter(ShopifyImporter):
                 record.save()
                 recordLookup.save()
                 
-    def get(self,shopifyId):
+    def singleRecord(self,shopifyId):
         order = GraphQL().run(
             """
             query getOrder($orderId:ID!) {
@@ -227,13 +227,15 @@ class ShopifyOrderImporter(ShopifyImporter):
                 }
             }
             """,
-            {"orderId":shopifyId}
+            {"orderId":ShopifyOperation.gided(shopifyId,"Order")}
         ).getDataRoot()
-        order.dump()
+        
         return self.processRecord(order)
     
     def run(self):
         processedCount = 0
+        
+        print(self.searchQuery())
         
         for orderGroup in self.gql.iterable(
             """
