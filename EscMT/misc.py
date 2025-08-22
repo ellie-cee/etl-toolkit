@@ -145,6 +145,27 @@ class GqlReturn(SearchableDict):
                 if "Too many attempts" in error.get("message"):
                     return True
         return False
+    def getDataRoot(self):
+        actualData = None
+        for key,value in self.data.items():
+            if key not in ["errors","userErrors"]:
+                actualData = self.data.get(key)
+                break
+        if actualData is not None:
+            self.data = actualData
+        return self
+
+class GwlReturnV2(GqlReturn):
+    def __init__(self,data):
+        super().__init__(data)
+        actualData = None
+        for key,value in self.data.items():
+            if key not in ["errors","userErrors"]:
+                actualData = self.data.get(key)
+                break
+        if actualData is not None:
+            self.data = actualData
+    
         
         
         
