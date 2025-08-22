@@ -8,7 +8,7 @@ from .operations import *
 from django.db.models import Q
 
 class FringeProcessor(ProjectCreatorOptions):
-    def additionalVariantMetafields(variant:SearchableDict):
+    def additionalVariantMetafields(self,variant:SearchableDict):
         return [
             {"namespace":"data",
              "key":"petshop_variant_id",
@@ -18,7 +18,7 @@ class FringeProcessor(ProjectCreatorOptions):
         ]
     
     
-    def additionalProductMetafields(product:SearchableDict):
+    def additionalProductMetafields(self,product:SearchableDict):
         return [
             {
                 "namespace":"data",
