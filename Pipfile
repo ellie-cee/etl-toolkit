@@ -30,5 +30,5 @@ Unidecode="*"
 django="*"
 beautifulsoup4="*"
 psycopg-pool="*"
-
+psutil="*"
 

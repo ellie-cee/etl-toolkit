@@ -84,7 +84,7 @@ class ShopifyImporter(ShopifyOperation):
     def run(self):
         pass
     
-    def setGql(self):
+    def setGql(self):   
         return GraphQL()
     def recordType(self):
         return None
