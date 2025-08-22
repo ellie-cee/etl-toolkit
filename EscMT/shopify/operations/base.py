@@ -15,16 +15,50 @@ class ProjectCreatorOptions:
         return []
     def additionalCustomerMetafields(self,record:SearchableDict):
         return []
-    
+class ShopifyQueryGenerator:
+    def __init__(self,sourceClass="source"):
+        self.sourceClass = sourceClass
+        
+    def recordType(self):
+        return self.recordType
+    def searchQuery(self):
+        try:
+            sortField = "numericId"
+            if self.sourceClass != "source":
+                sortField = "numericShopifyId"
+            
+            latest = RecordLookup.objects.filter(recordType=self.useRecordType).order_by(f"{sortField}").first()
+            if latest is None:
+                return ""
+            sortValue = getattr(latest,sortField)
+            if sortValue is None:
+                return ""
+            query = f"id:>{sortValue}"
+            
+            return query
+        except:
+            traceback.print_exc()
+            return ""
 class ShopifyOperation:
-    def __init__(self,profile="default",sourceClass="source",processor:ProjectCreatorOptions=ProjectCreatorOptions()):
+    def __init__(
+            self,
+            profile="default",
+            sourceClass="source",
+            processor:ProjectCreatorOptions=ProjectCreatorOptions(),
+            queryGenerator:ShopifyQueryGenerator=ShopifyQueryGenerator()
+        ):
+        
         self.processor = processor
+        self.queryGenerator = queryGenerator
+        self.queryGenerator.useRecordType = self.recordType()
         self.sourceClass = sourceClass
         self.profile = profile
         if shopify.ShopifyResource.site is None:
             shopifyInit(useProfile=profile)
         self.gql = self.setGql()
         self.groupsProcessed = 0
+    def recordType():
+        return "generic"
     def processRecord(self,record):
         pass
     def setGql(self):
@@ -98,24 +132,7 @@ class ShopifyImporter(ShopifyOperation):
             mappingRecord.save()
             
     def searchQuery(self):
-        
-        try:
-            sortField = "numericId"
-            if self.sourceClass != "source":
-                sortField = "numericShopifyId"
-            
-            latest = RecordLookup.objects.filter(recordType=self.recordType()).order_by(f"-{sortField}").first()
-            if latest is None:
-                return ""
-            sortValue = getattr(latest,sortField)
-            if sortValue is None:
-                return ""
-            query = f"id:>{sortValue}"
-            
-            return query
-        except:
-            traceback.print_exc()
-            return ""
+        return self.queryGenerator.searchQuery()
         
 class ShopifyConsolidator:
     def __init__(self,processor:ProjectCreatorOptions=ProjectCreatorOptions()):

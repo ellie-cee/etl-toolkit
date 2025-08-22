@@ -12,7 +12,8 @@ from django.db.models import Q
 import random
 
 def close_db(signal,frame):
-    sys.exit()
+    #sys.exit()
+    pass
     
 signal.signal(signal.SIGINT,close_db)   
 signal.signal(signal.SIGTERM,close_db)
@@ -200,6 +201,7 @@ class ShopifyOrderImporter(ShopifyImporter):
             }
         ):
             for order in orderGroup:
+                order.dump()
                 recordLookup = RecordLookup.objects.create(
                     externalId=order.get("id"),
                     recordType="order",
@@ -214,19 +216,22 @@ class ShopifyOrderImporter(ShopifyImporter):
                 record.save()
                 recordLookup.save()
                 
-    def single(self,shopifyId):
-        ret = GraphQL().run(
+    def get(self,shopifyId):
+        order = GraphQL().run(
             """
             query getOrder($orderId:ID!) {
                 order(id:$orderId) {
-                    %s
+            """
+            + self.gqlQuery() +
+            """            
                 }
             }
-            """ % (self.gqlQuery()),
+            """,
             {"orderId":shopifyId}
-        )
-       
-        self.processRecord(GqlReturn(ret.search("data.order")))
+        ).getDataRoot()
+        order.dump()
+        return self.processRecord(order)
+    
     def run(self):
         processedCount = 0
         
@@ -235,15 +240,16 @@ class ShopifyOrderImporter(ShopifyImporter):
             query getOrders($after:String,$query:String) {
                 orders(after:$after,query:$query,first:200) {
                     nodes {                        
-                    %s
-                    }
+            """
+            + self.gqlQuery() +
+            """     }
                     pageInfo {
                         hasNextPage
                         endCursor
                     }
                 }
             }
-            """ % (self.gqlQuery()),
+            """,
             {
                 "after":None,
                 "query":self.searchQuery()
@@ -252,28 +258,22 @@ class ShopifyOrderImporter(ShopifyImporter):
             
             order:GqlReturn
             for order in orderGroup:
+                
                 self.processRecord(order)
             processedCount = processedCount + 1
             
             
                 
     def processRecord(self, order):
-        
-        try:
-            overageItems:dict = self.loadApiOverageItems(order.get("id")).search("data.order")
-            for overageItemId,overageItemValue in overageItems.items():
-                order.set(overageItemId,overageItemValue)
-        except:
-            print(f"no API overage items for {order.get("id")}")
-            
-            
+        self.loadApiOverageItems(order)
         self.createRecords(order.get("name"),order)
         print(f"order {order.get('id')}")
         ShopifyOrderConsolidator(processor=self.processor).run(order=order)
+        return order
         
                     
                     
-    def loadApiOverageItems(self,orderId)->GqlReturn:
+    def loadApiOverageItems(self,order:GqlReturn)->GqlReturn:
         ret = self.gql.run(
             """
             query getOrder($orderId:ID!) {
@@ -358,13 +358,16 @@ class ShopifyOrderImporter(ShopifyImporter):
             }
             """,
             {
-                "orderId":orderId
+                "orderId":order.get("id")
             }
         )
+        
         if ret.search("data.order.id") is None:
             ret.dump()
             sys.exit()
-        return ret
+        
+        return order
+    
         
 class ShopifyOrderConsolidator(ShopifyConsolidator):
     def run(self,order=None,orderId=None):

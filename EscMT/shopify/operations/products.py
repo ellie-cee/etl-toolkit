@@ -11,6 +11,89 @@ class ShopifyProductImporter(ShopifyImporter):
     def setGql(self):
         return Products()
     
+    def gqlQuery(self):
+        return """
+            id
+            category {
+                fullName
+                isArchived
+                isLeaf
+                isRoot
+                level
+                name
+            }
+            createdAt
+            description
+            descriptionHtml
+            featuredMedia {
+                alt
+                id
+                mediaContentType
+                preview {
+                    image {
+                        altText
+                        id
+                        url
+                    }
+                }
+                status
+            }
+            handle
+            giftCardTemplateSuffix
+            isGiftCard
+            media(first:25) {
+                nodes {
+                    alt
+                    id
+                    mediaContentType
+                    preview {
+                        image {
+                            altText
+                            id
+                            url
+                        }
+                    }
+                    status
+                }
+            }
+            
+            options {
+                name
+                position
+                optionValues {
+                    name
+                }
+                
+            }
+            
+            productType
+            publishedAt
+            requiresSellingPlan
+            seo {
+                description
+                title
+            }
+            status
+            tags
+            templateSuffix
+            title
+            tracksInventory
+            
+            vendor 
+        """
+    def get(self,productId):
+        product = GraphQL().run(
+            """
+            query getProduct($id:ID!) {
+                product(id:$id) {
+            """
+            + self.gqlQuery() +
+            """,
+            {"productId":productId}
+            )
+        """
+        ).getDataRoot()
+        self.loadOverageItems(product)
     def run(self):
         
         for productGroup in self.gql.iterable(
@@ -18,93 +101,9 @@ class ShopifyProductImporter(ShopifyImporter):
             query getProducts($after:String,$query:String) {
                 products(after:$after,query:$query,first:250) {
                     nodes {
-                        id
-                        category {
-                            #attributes(first:20) {
-                            #    nodes {
-                            #        ... on TaxonomyChoiceListAttribute {
-                            #            
-                            #            name
-                            #            values(first:20) {
-                            #                nodes {
-                            #                    name
-                            #                }
-                            #            }
-                            #        }
-                            #        ... on TaxonomyMeasurementAttribute {
-                            #            name
-                            #            options {
-                            #                key
-                            #                value
-                            #            }
-                            #        }
-                            #   }
-                            #}
-                            fullName
-                            isArchived
-                            isLeaf
-                            isRoot
-                            level
-                            name
-                        }
-                        createdAt
-                        description
-                        descriptionHtml
-                        featuredMedia {
-                            alt
-                            id
-                            mediaContentType
-                            preview {
-                                image {
-                                    altText
-                                    id
-                                    url
-                                }
-                            }
-                            status
-                        }
-                        handle
-                        giftCardTemplateSuffix
-                        isGiftCard
-                        media(first:25) {
-                            nodes {
-                                alt
-                                id
-                                mediaContentType
-                                preview {
-                                    image {
-                                        altText
-                                        id
-                                        url
-                                    }
-                                }
-                                status
-                            }
-                        }
-                        
-                        options {
-                            name
-                            position
-                            optionValues {
-                                name
-                            }
-                            
-                        }
-                        
-                        productType
-                        publishedAt
-                        requiresSellingPlan
-                        seo {
-                            description
-                            title
-                        }
-                        status
-                        tags
-                        templateSuffix
-                        title
-                        tracksInventory
-                        
-                        vendor 
+            """
+            + self.gqlQuery() +
+            """            
                     }
                     pageInfo {
                         hasNextPage
@@ -198,11 +197,6 @@ class ShopifyProductImporter(ShopifyImporter):
                             type
                         }
                     }
-                    #variantMetafields:variants(first:100) {
-                    #    nodes {
-                    #        id
-                    #    }
-                    #}
                 }
             }
             """,
@@ -635,3 +629,6 @@ class ShopifyProductSync(ShopifyOperation):
             
         
         
+        
+
+    
