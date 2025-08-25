@@ -261,8 +261,8 @@ class ShopifyOrderImporter(ShopifyImporter):
             
             order:GqlReturn
             for order in orderGroup:
-                
                 self.processRecord(order)
+            
             processedCount = processedCount + 1
             
             
