@@ -236,7 +236,7 @@ class BatchOperation:
             os.system(f"nohup {self.scriptName} --mode worker --tranch {self.arg('tranch')} --segment {segment} --recordType {self.arg('recordType')} --profile {self.arg('profile')}>> logs/error.log 2>&1 &")
         
     def worker(self,recordIterator:BatchRecordIterator=None):
-        
+        print(f"Starting run worker {self.arg('segment')} pid {self.pid}")
         if recordIterator is None:
             return
         self.createInstance()

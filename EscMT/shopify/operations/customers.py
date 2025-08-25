@@ -146,7 +146,11 @@ class ShopifyCustomerCreator(ShopifyCreator):
     def processRecord(self,customer:Record,reconsolidate=True):
         
         recordLookup = super().processRecord(customer)
-        consolidated = ShopifyCustomerConsolidator(processor=self.processor).run(customerId=customer.externalId)
+        if reconsolidate:
+            consolidated = ShopifyCustomerConsolidator(processor=self.processor).run(customerId=customer.externalId)
+        else:
+            if isinstance(customer.consolidated,str):
+                consolidated = json.loads(customer.consolidated)
         
         shopify = GraphQL().run(
             """

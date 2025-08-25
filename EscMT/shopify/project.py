@@ -7,7 +7,7 @@ from EscMT.graphQL import *
 from .operations import *
 from django.db.models import Q
 
-class FringeProcessor(ProjectCreatorOptions):
+class UchProcessor(ProjectCreatorOptions):
     def variantMetafields(self,variant:SearchableDict,metafields):
         return [
             {"namespace":"data",
@@ -36,15 +36,28 @@ class FringeProcessor(ProjectCreatorOptions):
             }
        ]+metafields
        
-    def additionalCustomerMetafields(self, record):
-        return super().additionalCustomerMetafields(record)
+    def defaultFulfillmentLocation(self):
+        
+        return "gid://shopify/Location/83141067007"
     
-    def finalizeConsolidation(self, consolidated):
-        return consolidated
+    def orderFinalizeConsolidated(self, consolidated):
+        searchable = SearchableDict(consolidated)
+        searchable.set("order.fulfillmentStatus","FULFILLED")
+        
+        if searchable.get("order.fulfillment") is None:
+            searchable.set("order.fulfillment",
+                {
+                    "notifyCustomer":False,
+                    "locationId":self.defaultFulfillmentLocation(),           
+                }
+            )
+        #else:
+           #searchable.set("order.fulfillment.locationId",self.defaultFulfillmentLocation())
+        return searchable.data
+    def orderTags(self, tags):
+        return ["shipbob-fixed"]+tags   
     
-    def tags(self,tags):
-        return tags
-    
+   
 class UchOrderQueryGenerator(ShopifyQueryGenerator):
     def searchQuery(self):
         query = ""

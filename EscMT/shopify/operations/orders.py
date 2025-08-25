@@ -215,10 +215,8 @@ class ShopifyOrderImporter(ShopifyImporter):
                 )
                 record.save()
                 recordLookup.save()
-                
-    def singleRecord(self,shopifyId):
-        print(ShopifyOperation.gided(shopifyId,"Order"))
-        order = GraphQL().run(
+    def fetchRecord(self,shopifyId):
+        return GraphQL().run(
             """
             query getOrder($orderId:ID!) {
                 order(id:$orderId) {
@@ -230,12 +228,15 @@ class ShopifyOrderImporter(ShopifyImporter):
             """,
             {"orderId":ShopifyOperation.gided(shopifyId,"Order")}
         ).getDataRoot()
-        return self.processRecord(order)
+    def singleRecord(self,shopifyId):
+        
+        
+        return self.processRecord(self.fetchRecord(shopifyId))
     
     def run(self):
         processedCount = 0
         
-        print(self.searchQuery())
+        
         
         for orderGroup in self.gql.iterable(
             """
@@ -468,6 +469,23 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 
         if discountInput is not None:
             consolidatedOrder["discountCode"] = discountInput
+        
+        firstFulfillment = raw.getAsSearchable("fulfillments[0]")
+        defaultFulfillmentLocation = self.processor.defaultFulfillmentLocation()
+        
+        
+        
+        #this is a very, very irritating limitation of the order import
+        
+        if firstFulfillment is not None:
+            listedFulfillmentLocation = ShopifyOperation.lookupItemId(firstFulfillment.search("location.id"))    
+            #consolidatedOrder["fulfillmentStatus"] = firstFulfillment.get("status")
+            consolidatedOrder["fulfillment"] = {
+                "shipmentStatus":firstFulfillment.get("displayStatus") if "FULFILLED" not in firstFulfillment.get("displayStatus") else "DELIVERED",
+                "locationId":defaultFulfillmentLocation if defaultFulfillmentLocation is not None else listedFulfillmentLocation,
+                "notifyCustomer":False,
+                "trackingNumber":firstFulfillment.search("trackingInfo[0].number"),
+            }
             
         input = {
             "options":{
@@ -481,8 +499,7 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
         
         orderRecord.consolidated = self.processor.orderFinalizeConsolidated(input)
         orderRecord.save()
-        print("dewdeq")
-        print(input)
+        
         return orderRecord.consolidated
     
     def calculateFulfillment(self,order:SearchableDict):
@@ -496,13 +513,16 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
         for fulfillment in [SearchableDict(x) for x in order.get("fulfillments",[])]:
             
             
+            
+            
+            
             if fulfillment.get("status")=="SUCCESS":
                 successfulfullfillmentsCount = successfulfullfillmentsCount + functools.reduce(
                     lambda a,b:a+b.get("quantity"),
                     fulfillment.search("fulfillmentLineItems.nodes",[]),
                     0
                 )
-        print(totalItemsCount,successfulfullfillmentsCount)
+        
         if successfulfullfillmentsCount>=totalItemsCount:
             return "FULFILLED"
         elif successfulfullfillmentsCount<1:
@@ -659,11 +679,11 @@ class ShopifyOrderCreator(ShopifyCreator):
         order.save()
         
         hasDiscounts = False
-        print(f"created order {orderId}",flush=True)
+
         
         
         if consolidated.get("lineItemDiscounts") is None:
-            return
+            return shopifyOrder
         lineItemDiscounts:dict = consolidated.get("lineItemDiscounts")
         
         shopifyOrderEdit = self.orderEditBegin(orderId)
@@ -685,7 +705,7 @@ class ShopifyOrderCreator(ShopifyCreator):
                     )
         self.orderEditClose(calculatedOrderId)
             
-        
+        return shopifyOrder
         
             
         

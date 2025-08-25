@@ -29,6 +29,8 @@ class ProjectCreatorOptions:
         return tags
     def customerTags(self,tags):
         return tags
+    def defaultFulfillmentLocation(self):
+        return None 
 class ShopifyQueryGenerator:
     def __init__(self,sourceClass="source"):
         self.sourceClass = sourceClass
