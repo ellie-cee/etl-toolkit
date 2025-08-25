@@ -176,3 +176,4 @@ cython_debug/
 project_*
 Pipfile.lock
 EscMT/shopify/project.py
+**/project.py

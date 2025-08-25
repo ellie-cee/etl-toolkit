@@ -34,10 +34,10 @@ class ShopifyCustomerImporter(ShopifyImporter):
     
     def maxQuery(self):
         try:
-            latest = recordLokup.objects.latest("numericCustomerId")
-            if latest.numericCustomerId is None:
+            latest = RecordLookup.objects.latest("numericId")
+            if latest.numericId is None:
                 return ""
-            query = f"id:>{latest.numericCustomerId}"
+            query = f"id:>{latest.numericId}"
             
             return query
         except:
