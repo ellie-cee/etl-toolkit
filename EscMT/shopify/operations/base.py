@@ -30,7 +30,9 @@ class ProjectCreatorOptions:
     def customerTags(self,tags):
         return tags
     def defaultFulfillmentLocation(self):
-        return None 
+        return None
+    def taxesAsLineItem(self):
+        return False
 class ShopifyQueryGenerator:
     def __init__(self,sourceClass="source",useRecordType="generic"):
         self.sourceClass = sourceClass
@@ -130,6 +132,8 @@ class ShopifyImporter(ShopifyOperation):
         return GraphQL()
     def recordType(self):
         return None
+    def recordsAfter(self,cutoffDate):
+        return []
     
     def hasValue(self,value):
         if value!="" and value is not None:

@@ -1,4 +1,5 @@
 import functools
+import math
 from EscMT.base import *
 from .base import ShopifyImporter,ShopifyCreator,ShopifyConsolidator,ShopifyDeleter,ShopifyOperation
 import mysql.connector
@@ -215,6 +216,28 @@ class ShopifyOrderImporter(ShopifyImporter):
                 )
                 record.save()
                 recordLookup.save()
+    def recordsAfter(self,cutoffDate):
+        orderIds = []
+        for orderGroup in GraphQL().iterable(
+            """
+            query getUpdateOrders($after:String,$query:String) {
+                orders(first:250,after:$after,query:$query) {
+                    nodes {
+                        id
+                    }
+                }
+            }
+            """,
+            {
+                "after":None,
+                "query":f"processed_at:>={cutoffDate}",
+            }
+        ):
+            for order in orderGroup:
+                
+                orderIds.append(order.get("id"))
+                
+        return orderIds
     def fetchRecord(self,shopifyId):
         return GraphQL().run(
             """
@@ -267,8 +290,9 @@ class ShopifyOrderImporter(ShopifyImporter):
             
             
                 
-    def processRecord(self, order):
+    def processRecord(self, order:GqlReturn):
         self.loadApiOverageItems(order)
+        order.dump()
         self.createRecords(order.get("name"),order)
         print(f"order {order.get('id')}")
         ShopifyOrderConsolidator(processor=self.processor).run(order=order)
@@ -290,7 +314,10 @@ class ShopifyOrderImporter(ShopifyImporter):
                             }
                         }
                         authorizationCode
-                        
+                        parentTransaction {
+                            authorizationCode
+                            kind
+                        }
                         kind
                         processedAt
                         status
@@ -387,6 +414,7 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 orderId = order.get("id")
             else:
                 orderId = order.externalId
+        
         orderRecord,raw = super().run(record=order,recordId=orderId)
         
         
@@ -408,10 +436,48 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 "shippingAddress":raw.get("shippingAddress"),
                 "shippingLines":raw.search("shippingLines.nodes"),
                 "tags":self.processor.orderTags(raw.get("tags")),
-                "taxesIncluded":raw.get("taxesIncluded"),   
-                "taxLines":raw.get("taxLines"),
-                "transactions":raw.get("transactions"),    
+                "taxesIncluded":True,#raw.get("taxesIncluded"),   
+                #"taxLines":raw.get("taxLines"),
+                "transactions":self.mapTransactions(raw.get("transactions")),    
             }
+        
+        if len(raw.get("taxLines",[]))>0:
+            def taxRateDisplay(rate):
+                toPercent = math.ceil(rate*10000)/100
+                return f"{toPercent}%"
+            if self.processor.taxesAsLineItem():
+                print("ASLINEITEM")
+                totalTaxes = functools.reduce(
+                    lambda a,b:a+float(b.search("priceSet.shopMoney.amount")),
+                    raw.getAsSearchable("taxLines"),
+                    0                                
+                )
+                
+                properties = [
+                    {
+                        "name":f"{x.get('title')} {taxRateDisplay(x.get('rate'))}",
+                        "value":x.search("priceSet.shopMoney.amount")
+                    }
+                    for x in raw.getAsSearchable("taxLines")
+                ]
+                consolidatedOrder["lineItems"].append(
+                    {
+                        "title":"Taxes",
+                        "sku":"TAX",
+                        "priceSet":{
+                            "shopMoney":{
+                                "amount":totalTaxes,
+                                "currencyCode":"USD"
+                            }
+                        },
+                        "properties":properties,
+                        "quantity":1,
+                        "requiresShipping":True 
+                    }
+                )
+            else:
+                consolidatedOrder["taxLines"] = raw.get("taxLines")
+                
         shopifyCustomerId = ShopifyOperation.lookupItemId(raw.search("customer.id"))
         
         if shopifyCustomerId is not None:
@@ -503,7 +569,18 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
         orderRecord.save()
         
         return orderRecord.consolidated
-    
+    def mapTransactions(self,transactions):
+        finalTransactions = []
+        for transaction in [SearchableDict(x) for x in transactions]:
+            if transaction.get("kind")=="VOID":
+                finalTransactions = list(filter(
+                    lambda x: x.get("authorizationCode") not in [transaction.search("parentTransaction.authorizationCode")],
+                    finalTransactions
+                ))
+            else:
+                finalTransactions.append(stripDict(transaction.data,["parentTransaction"]))
+        return finalTransactions
+        
     def calculateFulfillment(self,order:SearchableDict):
         
         totalItemsCount = functools.reduce(
@@ -598,15 +675,16 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                 processedLineItem["title"]=lineItem.get("title")
                 processedLineItem["vendor"]=lineItem.get("vendor")
                 processedLineItem["giftCard"]=lineItem.get("isGiftCard")[0] if isinstance(lineItem.get("giftCard"),list) else lineItem.get("giftCard")
-                processedLineItem["requiresShipping"]=lineItem.get("requiresShipping")[0] if isinstance(lineItem.get("requiresShipping"),list) else lineItem.get("requiresShipping")
                 
                 
+            processedLineItem["requiresShipping"]=lineItem.get("requiresShipping")[0] if isinstance(lineItem.get("requiresShipping"),list) else lineItem.get("requiresShipping")    
             processedLineItem["priceSet"]={
                 "shopMoney":{                        
                     "currencyCode":lineItem.search("priceSet.shopMoney.currencyCode"),
                     "amount":float(lineItem.search("priceSet.shopMoney.amount"))/lineItem.get("quantity")
                 }
             }
+            
                                                          
             processedLineItems.append(processedLineItem)
         return processedLineItems
@@ -679,7 +757,7 @@ class ShopifyOrderCreator(ShopifyCreator):
             sys.exit()
 
         
-        
+        print(f"created order {orderId}")
         
         recordLookup.shopifyId  = orderId
         recordLookup.save()
@@ -713,6 +791,8 @@ class ShopifyOrderCreator(ShopifyCreator):
         calculatedOrderLineItems = shopifyOrderEdit.nodes("data.orderEditBegin.calculatedOrder.lineItems")
         for index,lineItem in enumerate(calculatedOrderLineItems):
             lineItemDiscountApplications = lineItemDiscounts.get(str(index))
+            if lineItemDiscountApplications is None:
+                continue
             if len(lineItemDiscountApplications)>0:
                 for lineItemDiscountApplication in [SearchableDict(x) for x in lineItemDiscountApplications]:
                     self.addLineItemDiscount(
