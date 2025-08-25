@@ -32,8 +32,9 @@ class ProjectCreatorOptions:
     def defaultFulfillmentLocation(self):
         return None 
 class ShopifyQueryGenerator:
-    def __init__(self,sourceClass="source"):
+    def __init__(self,sourceClass="source",useRecordType="generic"):
         self.sourceClass = sourceClass
+        self.useRecordType = useRecordType
         
     def recordType(self):
         return self.recordType
@@ -61,13 +62,16 @@ class ShopifyOperation:
             profile="default",
             sourceClass="source",
             processor:ProjectCreatorOptions=ProjectCreatorOptions(),
-            queryGenerator:ShopifyQueryGenerator=ShopifyQueryGenerator()
+            queryGenerator:ShopifyQueryGenerator=ShopifyQueryGenerator(),
+            limit=None
         ):
         queryGenerator.sourceClass = sourceClass
-        
+        self.limit = limit
+        self.processed = 0
         self.processor = processor
         self.queryGenerator = queryGenerator
         self.queryGenerator.useRecordType = self.recordType()
+        
         self.sourceClass = sourceClass
         self.profile = profile
         if shopify.ShopifyResource.site is None:
@@ -105,6 +109,14 @@ class ShopifyOperation:
         if isinstance(id,int) or not id.startswith("gid"):
             return f"gid://shopify/{type}/{id}"
         return id
+    def processedRecord(self):
+        self.processed = self.processed + 1
+    def atLimit(self):
+        self.processedRecord()
+        if self.limit is not None and self.processed>=self.limit:
+            return True
+        return False
+    
 class ShopifyImporter(ShopifyOperation):
     def rowCount(self):
         self.groupsProcessed = self.groupsProcessed + 1
@@ -192,8 +204,9 @@ class ShopifyCreator(ShopifyOperation):
         if self.sortOrder() == "desc":
             recordIterator = recordIterator.order_by("-numericId")
         for record in recordIterator.all():
-            
             self.processRecord(record)
+            if self.atLimit():
+                return
             
     def processRecord(self,record:Record)->RecordLookup:
 
