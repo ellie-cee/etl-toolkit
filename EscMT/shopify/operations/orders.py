@@ -427,7 +427,9 @@ class ShopifyOrderConsolidator(ShopifyConsolidator):
                         "addresses":customerInfo.get("addresses"),
                         "firstName":customerInfo.get("firstName"),
                         "lastName":customerInfo.get("lastName"),
-                        "email":customerInfo.get("email")
+                        "email":customerInfo.get("email"),
+                        "tags":self.processor.customerTags([]),
+                        "phone":customerInfo.get("phone")
                     }
                 }
         
@@ -645,6 +647,12 @@ class ShopifyOrderCreator(ShopifyCreator):
                     order {
                         id
                         closed
+                        customer {
+                            id
+                            defaultEmailAddress {
+                                emailAddress
+                            }
+                        }
                         lineItems(first:50) {
                             nodes {
                                 id
@@ -679,6 +687,15 @@ class ShopifyOrderCreator(ShopifyCreator):
         order.save()
         
         hasDiscounts = False
+        
+        customerId = shopifyOrder.search("data.orderCreate.order.customer.id")
+        emailAddress = shopifyOrder.search("data.orderCreate.order.customer.defaultEmailAddress.emailAddress")
+        if customerId is not None and emailAddress is not None:
+            customerLookup = ShopifyOperation.lookupItemByKey(emailAddress,"customer")
+            if customerLookup is not None:
+                customerLookup.shopifyId = customerId
+                customerLookup.numericShopifyId=int(customerId.split("/")[-1])
+                customerLookup.save()
 
         
         

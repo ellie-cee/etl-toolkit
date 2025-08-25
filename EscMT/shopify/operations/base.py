@@ -42,7 +42,7 @@ class ShopifyQueryGenerator:
             sortField = "numericId"
             if self.sourceClass != "source":
                 sortField = "numericShopifyId"
-            
+            print(sortField,self.sourceClass)
             latest = RecordLookup.objects.filter(recordType=self.useRecordType).order_by(f"-{sortField}").first()
             if latest is None:
                 return ""
@@ -50,7 +50,7 @@ class ShopifyQueryGenerator:
             if sortValue is None:
                 return ""
             query = f"id:>{sortValue}"
-            
+            print(query)
             return query
         except:
             traceback.print_exc()
@@ -63,6 +63,7 @@ class ShopifyOperation:
             processor:ProjectCreatorOptions=ProjectCreatorOptions(),
             queryGenerator:ShopifyQueryGenerator=ShopifyQueryGenerator()
         ):
+        queryGenerator.sourceClass = sourceClass
         
         self.processor = processor
         self.queryGenerator = queryGenerator
@@ -91,7 +92,14 @@ class ShopifyOperation:
             return None
         except:
             return itemGid
-        
+    @staticmethod
+    def lookupItemByKey(recordKey,recordType)->RecordLookup:
+        record = None
+        try:
+            record = RecordLookup.objects.filter(recordKey=recordKey,recordType=recordType).first()
+        except:
+            return None
+        return record
     @staticmethod
     def gided(id,type):
         if isinstance(id,int) or not id.startswith("gid"):
