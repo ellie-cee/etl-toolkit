@@ -757,7 +757,7 @@ class ShopifyOrderCreator(ShopifyCreator):
             sys.exit()
 
         
-        print(f"created order {orderId}")
+        print(f"created order {orderId}",flush=True)
         
         recordLookup.shopifyId  = orderId
         recordLookup.save()
